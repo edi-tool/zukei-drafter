@@ -26,7 +26,7 @@
 | `a2249b2`（main 直接） | Pages の初回ビルドが走らなかったため、README 変更で再トリガー |
 | #2 | v1 レビューで見つかった不具合の修正（下記）。マージ済み、CI（unit / browser）緑 |
 | #3 | この HANDOFF.md の追加（マージ済み） |
-| #4 | 2D の寸法・注釈（`js/annotations.js`）。下記 |
+| #4 | 2D の寸法・注釈（`js/annotations.js`）。マージ済み、CI（unit / browser）緑。設計判断は下記 |
 
 #2 で修正した主な不具合（再発防止のため記録）:
 
@@ -85,6 +85,10 @@ CHROMIUM_PATH=/path/to/chromium npm run test:e2e   # 既存の Chromium を使�
 * `pkill -f "<パターン>"` は同じ文字列を含む自分自身のシェルも殺すことがある。
   その後に続くコマンド（`git stash pop` など）が実行されないので、
   後処理は別コマンドに分ける。
+* 変更を試しに壊して確かめる（テストが失敗を検出するかの確認など）ときは、
+  `git checkout <file>` で戻さないこと。未コミットの変更ごと消える
+  （#4 の作業中に一度 `render-svg.js` の変更を失った）。先にコミットするか、
+  scratchpad にコピーしてから戻す。
 * GitHub Pages は設定保存直後に初回ビルドが走らないことがあった。
   その場合は `main` への push で再トリガーできる（Actions の
   "pages build and deployment" で確認）。
