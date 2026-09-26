@@ -67,6 +67,12 @@ try {
     assert.equal(await count('polygon'), 1);
   });
 
+  await check('annotations are off by default (no text, options hidden)', async () => {
+    assert.equal(await count('text'), 0);
+    assert.equal(await page.locator('#ann-options').isVisible(), false);
+    for (const id of ['#ann-vertex-names', '#ann-lengths', '#ann-angles']) assert.equal(await page.isChecked(id), false);
+  });
+
   await check('only the selected shape\'s inputs are visible (hidden attribute is honored)', async () => {
     const visible = async () => ({
       regular: await page.locator('#fieldset-regular').isVisible(),
@@ -103,6 +109,114 @@ try {
     await page.locator('.general-length').first().fill('55');
     assert.match(await page.locator('#general-error').innerText(), /閉じていません（閉合誤差 15\.000）/);
     assert.equal(await count('polyline'), 1);
+  });
+
+  await check('annotations: vertex names, lengths (label / dimension line), angles, then off again', async () => {
+    await page.selectOption('#shape2d-type', 'triangle');
+    await page.selectOption('#triangle-method', 'sss');
+    await set('#sss-a', 3);
+    await set('#sss-b', 4);
+    await set('#sss-c', 5);
+    const plain = await preview();
+    const textsNow = () => page.$$eval('#preview svg text', (els) => els.map((e) => e.textContent).sort());
+
+    await page.check('#ann-vertex-names');
+    assert.deepEqual(await textsNow(), ['A', 'B', 'C']);
+    assert.equal(await page.locator('#ann-options').isVisible(), true);
+    assert.equal(await page.locator('#ann-unit').isVisible(), false, 'unit only applies to lengths');
+
+    await page.check('#ann-lengths');
+    await set('#ann-unit', 'cm');
+    assert.deepEqual(await textsNow(), ['3cm', '4cm', '5cm', 'A', 'B', 'C']);
+    await page.selectOption('#ann-length-style', 'dimension');
+    assert.equal(await count('line'), 9, '2 extension lines + 1 dimension line per edge');
+    assert.equal(await count('polygon'), 1 + 6, 'figure + 2 arrowheads per edge');
+
+    await page.check('#ann-angles');
+    await set('#ann-decimals', 0);
+    assert.deepEqual(await textsNow(), ['37°', '3cm', '4cm', '53°', '5cm', '90°', 'A', 'B', 'C']);
+    assert.ok(!(await preview()).includes('NaN'));
+
+    await page.uncheck('#ann-vertex-names');
+    await page.uncheck('#ann-lengths');
+    await page.uncheck('#ann-angles');
+    assert.equal(await preview(), plain, 'all off gives the plain figure again');
+    assert.equal(await page.locator('#ann-options').isVisible(), false);
+  });
+
+  await check('annotations: text in the PNG matches the browser\'s own glyphs and stays inside the image', async () => {
+    await page.selectOption('#shape2d-type', 'regular');
+    await page.check('#ann-vertex-names');
+    await page.check('#ann-lengths');
+    await page.check('#ann-angles');
+    await set('#ann-decimals', 1);
+    await set('#ann-unit', 'cm');
+    await page.selectOption('#ann-length-style', 'label');
+    const result = await page.evaluate(async () => {
+      const { svgToPngBlob } = await import('./js/export-png.js');
+      const { estimateTextBox } = await import('./js/annotations.js');
+      const svgEl = document.querySelector('#preview svg');
+      const w = Number(svgEl.getAttribute('width'));
+      const h = Number(svgEl.getAttribute('height'));
+      const texts = [...svgEl.querySelectorAll('text')];
+      const boxes = texts.map((t) => {
+        const b = t.getBBox();
+        return { x: b.x, y: b.y, width: b.width, height: b.height, estimate: estimateTextBox(t.textContent, Number(t.getAttribute('font-size'))).width };
+      });
+
+      const k = 3; // rasterize at 3x
+      const pixels = async (svg, drawExtra) => {
+        const bitmap = await createImageBitmap(await svgToPngBlob(svg, { outputWidth: w * k, outputHeight: h * k, background: 'white' }));
+        const canvas = new OffscreenCanvas(w * k, h * k);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bitmap, 0, 0);
+        if (drawExtra) drawExtra(ctx);
+        return ctx.getImageData(0, 0, w * k, h * k).data; // throws if the canvas were tainted
+      };
+      const withText = await pixels(svgEl.outerHTML);
+      const bare = svgEl.cloneNode(true);
+      bare.querySelectorAll('text').forEach((t) => t.remove());
+      const reference = await pixels(bare.outerHTML, (ctx) => {
+        for (const t of texts) {
+          ctx.font = `${Number(t.getAttribute('font-size')) * k}px ${t.getAttribute('font-family')}`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = t.getAttribute('fill');
+          ctx.fillText(t.textContent, Number(t.getAttribute('x')) * k, Number(t.getAttribute('y')) * k);
+        }
+      });
+      const withoutText = await pixels(bare.outerHTML);
+
+      // Compare dark-pixel masks inside the text boxes only.
+      let both = 0;
+      let either = 0;
+      let inkPng = 0;
+      let inkBare = 0;
+      const dark = (data, i) => data[i] < 128;
+      for (const b of boxes) {
+        for (let y = Math.floor(b.y * k); y < Math.ceil((b.y + b.height) * k); y++) {
+          for (let x = Math.floor(b.x * k); x < Math.ceil((b.x + b.width) * k); x++) {
+            const i = (y * w * k + x) * 4;
+            const a = dark(withText, i);
+            const r = dark(reference, i);
+            if (a && r) both++;
+            if (a || r) either++;
+            if (a) inkPng++;
+            if (dark(withoutText, i)) inkBare++;
+          }
+        }
+      }
+      return { w, h, boxes, iou: both / either, inkPng, inkBare, count: texts.length };
+    });
+    assert.equal(result.count, 6 + 6 + 6, 'hexagon: 6 names, 6 lengths, 6 angles');
+    for (const b of result.boxes) {
+      assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.width <= result.w && b.y + b.height <= result.h, `text box inside image: ${JSON.stringify(b)}`);
+      assert.ok(b.width <= b.estimate * 1.1, `layout estimate covers the real width: ${JSON.stringify(b)}`);
+    }
+    assert.ok(result.inkPng > 5 * Math.max(1, result.inkBare), `text is drawn into the PNG (ink ${result.inkPng} vs ${result.inkBare} without text)`);
+    assert.ok(result.iou > 0.8, `PNG glyphs match canvas fillText with the same font (IoU ${result.iou.toFixed(3)})`);
+
+    for (const id of ['#ann-vertex-names', '#ann-lengths', '#ann-angles']) await page.uncheck(id);
+    assert.equal(await count('text'), 0);
   });
 
   await page.click('.mode-btn[data-mode="3d"]');

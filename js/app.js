@@ -105,6 +105,24 @@ function compute2DShape() {
   return { points: result.points, closed: result.closed };
 }
 
+/** Annotation options for buildScene2D, or null when every annotation is off. */
+function currentAnnotation() {
+  const lengths = $('ann-lengths').checked ? $('ann-length-style').value : 'none';
+  const vertexNames = $('ann-vertex-names').checked;
+  const angles = $('ann-angles').checked;
+  if (!vertexNames && !angles && lengths === 'none') return null;
+  const decimals = readNumber($('ann-decimals'));
+  const fontSize = readNumber($('ann-font-size'));
+  return {
+    vertexNames,
+    angles,
+    lengths,
+    unit: $('ann-unit').value.trim(),
+    decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 4 ? decimals : 1,
+    fontSize: fontSize >= 6 && fontSize <= 72 ? fontSize : 18,
+  };
+}
+
 // ---------- 3D ----------
 
 const SHAPE3D_FIELDS = {
@@ -184,7 +202,7 @@ function render() {
   let scene = null;
   if (mode === '2d') {
     const shape = compute2DShape();
-    if (shape) scene = buildScene2D(shape.points, shape.closed, style);
+    if (shape) scene = buildScene2D(shape.points, shape.closed, style, currentAnnotation());
   } else {
     const input = compute3DShape();
     if (input) {
@@ -249,6 +267,10 @@ function syncVisibility() {
   $('triangle-sas').hidden = method !== 'sas';
   $('triangle-asa').hidden = method !== 'asa';
   $('oblique-params').hidden = $('projection-type').value !== 'oblique';
+  const anyAnnotation = ['ann-vertex-names', 'ann-lengths', 'ann-angles'].some((id) => $(id).checked);
+  $('ann-options').hidden = !anyAnnotation;
+  $('ann-length-style-field').hidden = !$('ann-lengths').checked;
+  $('ann-unit-field').hidden = !$('ann-lengths').checked;
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
 }
 
