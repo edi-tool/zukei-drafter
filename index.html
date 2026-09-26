@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>図形PNGジェネレーター</title>
+<title>図形作成さん</title>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="icon" href="data:," />
 </head>
 <body>
 <header class="app-header">
-  <h1>図形PNGジェネレーター</h1>
+  <h1>図形作成さん</h1>
   <div class="mode-switch" role="tablist" aria-label="モード切替">
     <button type="button" class="mode-btn active" data-mode="2d" role="tab" aria-selected="true">2次元</button>
     <button type="button" class="mode-btn" data-mode="3d" role="tab" aria-selected="false">3次元</button>
@@ -75,10 +75,84 @@
         <label class="field"><span>頂点数</span>
           <input type="number" id="general-count" min="3" max="20" step="1" value="4" />
         </label>
+        <p class="hint">方向角は基準（右方向・3時の方向）を0度として反時計回りに測った絶対角です。前の辺からの曲がり角ではありません。</p>
         <div id="general-edges"></div>
         <p class="error-message" id="general-error"></p>
       </fieldset>
     </div>
+
+    <fieldset id="fieldset-annotations" class="shape-fieldset">
+      <legend>注釈（2次元図形のみ）</legend>
+      <label class="field checkbox-field">
+        <input type="checkbox" id="ann-vertex-enabled" />
+        <span>頂点名を表示（A, B, C, ...）</span>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>頂点名のフォントサイズ</span>
+          <input type="number" id="ann-vertex-font-size" min="6" max="60" step="1" value="16" />
+        </label>
+        <label class="field"><span>図形からの距離 (px)</span>
+          <input type="number" id="ann-vertex-distance" min="0" max="200" step="1" value="14" />
+        </label>
+      </div>
+
+      <label class="field"><span>辺の長さ</span>
+        <select id="ann-edge-mode">
+          <option value="off">表示しない</option>
+          <option value="text">テキストで表示</option>
+          <option value="dimension">寸法線で表示</option>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>単位</span>
+          <select id="ann-edge-unit">
+            <option value="none">なし</option>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+          </select>
+        </label>
+        <label class="field"><span>小数桁</span>
+          <input type="number" id="ann-edge-decimals" min="0" max="4" step="1" value="0" />
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span>フォントサイズ</span>
+          <input type="number" id="ann-edge-font-size" min="6" max="60" step="1" value="14" />
+        </label>
+        <label class="field" id="ann-edge-offset-field" hidden><span>寸法線のオフセット (px)</span>
+          <input type="number" id="ann-edge-offset" min="4" max="200" step="1" value="26" />
+        </label>
+      </div>
+
+      <label class="field checkbox-field">
+        <input type="checkbox" id="ann-angle-enabled" />
+        <span>角度を表示</span>
+      </label>
+      <label class="field"><span>角度の表示内容</span>
+        <select id="ann-angle-show-value">
+          <option value="value">角度の値を表示</option>
+          <option value="arc">弧のみ表示</option>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field"><span>小数桁</span>
+          <input type="number" id="ann-angle-decimals" min="0" max="2" step="1" value="0" />
+        </label>
+        <label class="field"><span>弧の半径 (px)</span>
+          <input type="number" id="ann-angle-radius" min="8" max="120" step="1" value="24" />
+        </label>
+        <label class="field"><span>フォントサイズ</span>
+          <input type="number" id="ann-angle-font-size" min="6" max="60" step="1" value="13" />
+        </label>
+      </div>
+
+      <label class="field"><span>直角記号</span>
+        <select id="ann-right-angle-mode">
+          <option value="auto">自動（90°で表示）</option>
+          <option value="hidden">非表示</option>
+        </select>
+      </label>
+    </fieldset>
 
     <!-- 3D panel -->
     <div class="mode-panel" id="panel-3d" hidden>

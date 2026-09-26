@@ -16,6 +16,33 @@ const MAX_PNG_SIDE = 10000;
 let mode = '2d';
 let current = null; // { svg, width, height } of the last successful render
 
+function currentAnnotations() {
+  return {
+    vertexLabels: {
+      enabled: $('ann-vertex-enabled').checked,
+      fontSize: readNumber($('ann-vertex-font-size')) || 16,
+      distance: readNumber($('ann-vertex-distance')) || 0,
+    },
+    edgeLengths: {
+      mode: $('ann-edge-mode').value,
+      unit: $('ann-edge-unit').value,
+      decimals: Math.max(0, Math.round(readNumber($('ann-edge-decimals')) || 0)),
+      fontSize: readNumber($('ann-edge-font-size')) || 14,
+      offset: readNumber($('ann-edge-offset')) || 26,
+    },
+    angles: {
+      enabled: $('ann-angle-enabled').checked,
+      showValue: $('ann-angle-show-value').value === 'value',
+      decimals: Math.max(0, Math.round(readNumber($('ann-angle-decimals')) || 0)),
+      radius: readNumber($('ann-angle-radius')) || 24,
+      fontSize: readNumber($('ann-angle-font-size')) || 13,
+    },
+    rightAngles: {
+      mode: $('ann-right-angle-mode').value,
+    },
+  };
+}
+
 function currentStyle() {
   const fillMode = $('style-fill-mode').value;
   const fill = fillMode === 'none' ? 'none' : fillMode === 'white' ? '#ffffff' : $('style-fill-color').value;
@@ -184,7 +211,7 @@ function render() {
   let scene = null;
   if (mode === '2d') {
     const shape = compute2DShape();
-    if (shape) scene = buildScene2D(shape.points, shape.closed, style);
+    if (shape) scene = buildScene2D(shape.points, shape.closed, style, currentAnnotations());
   } else {
     const input = compute3DShape();
     if (input) {
@@ -231,6 +258,7 @@ function setMode(newMode) {
   mode = newMode;
   $('panel-2d').hidden = mode !== '2d';
   $('panel-3d').hidden = mode !== '3d';
+  $('fieldset-annotations').hidden = mode !== '2d';
   document.querySelectorAll('.mode-btn').forEach((btn) => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle('active', active);
@@ -250,6 +278,7 @@ function syncVisibility() {
   $('triangle-asa').hidden = method !== 'asa';
   $('oblique-params').hidden = $('projection-type').value !== 'oblique';
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
+  $('ann-edge-offset-field').hidden = $('ann-edge-mode').value !== 'dimension';
 }
 
 function wireEvents() {

@@ -117,6 +117,27 @@ body {
   height: 34px;
 }
 
+.field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
 .edge-row {
   display: grid;
   grid-template-columns: auto 1fr 1fr;

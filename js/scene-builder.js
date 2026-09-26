@@ -11,6 +11,7 @@ import { matrixOf, applyMatrix, viewDirectionOf } from './projections.js';
 import { classifyEdges } from './hidden-line.js';
 import { ellipseBBox, ellipseArcBeziers, ellipsePoint } from './ellipse.js';
 import { cylinderOutline, coneOutline } from './curved-solids.js';
+import { buildAnnotationItems, annotationsActive } from './annotation-layout.js';
 
 const DEFAULT_SIZE = 800;
 
@@ -97,15 +98,55 @@ function scene(fit, s, items) {
   return { width: fit.width, height: fit.height, background: s.background ?? 'none', items, meta: { scale: fit.scale } };
 }
 
-/** Scene for a flat 2D shape; an open (non-closing) path is drawn as a polyline. */
-export function buildScene2D(points, closed, style = {}) {
+function translatePoint([x, y], dx, dy) {
+  return [x + dx, y + dy];
+}
+
+function translateItem(item, dx, dy) {
+  if (item.type === 'text') return { ...item, point: translatePoint(item.point, dx, dy) };
+  if (item.points) return { ...item, points: item.points.map((p) => translatePoint(p, dx, dy)) };
+  return item;
+}
+
+/**
+ * Scene for a flat 2D shape; an open (non-closing) path is drawn as a
+ * polyline. `annotations` (see js/annotation-layout.js for the shape) adds
+ * vertex labels / edge lengths / dimension lines / angle arcs / right-angle
+ * marks. Annotations can draw outside the shape's own bounding box, so when
+ * any are enabled the canvas is grown (and everything re-centered) in a
+ * second pass so nothing gets clipped at the edge of the image; with no
+ * annotations this reduces to the original single-pass fit.
+ */
+export function buildScene2D(points, closed, style = {}, annotations = {}) {
   const s = { ...DEFAULT_STYLE, ...style };
   const fit = computeFit(bboxOfPoints(points), s.size, s.margin);
   const mapped = points.map(fit.map);
-  const item = closed
+  const shapeItem = closed
     ? { type: 'polygon', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth, fill: s.fill }
     : { type: 'polyline', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth };
-  return scene(fit, s, [item]);
+
+  if (!annotationsActive(annotations)) {
+    return scene(fit, s, [shapeItem]);
+  }
+
+  const { items: annotationItems, bbox: annotationBBox } = buildAnnotationItems(points, closed, fit, annotations, s.stroke);
+  if (!annotationBBox) return scene(fit, s, [shapeItem]);
+
+  const overflowLeft = Math.max(0, s.margin - annotationBBox.minX);
+  const overflowTop = Math.max(0, s.margin - annotationBBox.minY);
+  const overflowRight = Math.max(0, annotationBBox.maxX - (fit.width - s.margin));
+  const overflowBottom = Math.max(0, annotationBBox.maxY - (fit.height - s.margin));
+
+  if (overflowLeft === 0 && overflowTop === 0 && overflowRight === 0 && overflowBottom === 0) {
+    return scene(fit, s, [shapeItem, ...annotationItems]);
+  }
+
+  const width = Math.round(fit.width + overflowLeft + overflowRight);
+  const height = Math.round(fit.height + overflowTop + overflowBottom);
+  const dx = overflowLeft;
+  const dy = overflowTop;
+  const shifted = [shapeItem, ...annotationItems].map((it) => translateItem(it, dx, dy));
+  return { width, height, background: s.background ?? 'none', items: shifted, meta: { scale: fit.scale } };
 }
 
 const SHAPE_FACTORIES = {

@@ -200,6 +200,68 @@ try {
     assert.ok(result.transparent.dark > 20000, `dark pixels: ${result.transparent.dark}`);
   });
 
+  await page.click('.mode-btn[data-mode="2d"]');
+  await page.selectOption('#shape2d-type', 'regular');
+  await set('#regular-sides', 3);
+  await set('#regular-side-length', 40);
+
+  await check('annotations off by default: no text in the preview', async () => {
+    assert.equal(await count('text'), 0);
+  });
+
+  await check('vertex labels: enabling draws one <text> per vertex and grows the canvas', async () => {
+    const before = await page.$eval('#preview svg', (s) => [Number(s.getAttribute('width')), Number(s.getAttribute('height'))]);
+    await page.check('#ann-vertex-enabled');
+    assert.equal(await count('text'), 3);
+    const after = await page.$eval('#preview svg', (s) => [Number(s.getAttribute('width')), Number(s.getAttribute('height'))]);
+    assert.ok(after[0] >= before[0] && after[1] >= before[1]);
+    await page.uncheck('#ann-vertex-enabled');
+  });
+
+  await check('edge length text mode shows one label per side, no dimension lines added', async () => {
+    await page.selectOption('#ann-edge-mode', 'text');
+    assert.equal(await count('text'), 3);
+    await page.selectOption('#ann-edge-mode', 'off');
+  });
+
+  await check('edge length dimension mode shows offset field and draws dimension lines', async () => {
+    await page.selectOption('#ann-edge-mode', 'dimension');
+    assert.equal(await page.locator('#ann-edge-offset-field').isVisible(), true);
+    const linesBefore = await count('line');
+    assert.ok(linesBefore > 0, 'dimension lines/extension lines/arrow ticks are <line> elements');
+    await page.selectOption('#ann-edge-mode', 'off');
+  });
+
+  await check('angle annotation on an equilateral triangle shows three 60° labels', async () => {
+    await page.check('#ann-angle-enabled');
+    const text = await preview();
+    assert.equal((text.match(/60°/g) || []).length, 3);
+    await page.uncheck('#ann-angle-enabled');
+  });
+
+  await check('right-angle mark appears automatically on a square, not on the equilateral triangle', async () => {
+    await page.selectOption('#ann-right-angle-mode', 'auto');
+    assert.equal(await count('polyline'), 0, 'no 90 degree corners on an equilateral triangle');
+    await page.selectOption('#shape2d-type', 'regular');
+    await set('#regular-sides', 4);
+    assert.equal(await count('polyline'), 4, 'square has four right angles');
+    await page.selectOption('#ann-right-angle-mode', 'hidden');
+    assert.equal(await count('polyline'), 0);
+  });
+
+  await check('annotated PNG export still succeeds with no console errors', async () => {
+    await page.selectOption('#ann-right-angle-mode', 'auto');
+    await page.check('#ann-vertex-enabled');
+    await page.selectOption('#ann-edge-mode', 'dimension');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-png')]);
+    const buf = await readFile(await download.path());
+    const { width, height } = pngInfo(buf);
+    assert.ok(width > 0 && height > 0);
+    await page.uncheck('#ann-vertex-enabled');
+    await page.selectOption('#ann-edge-mode', 'off');
+    await page.selectOption('#ann-right-angle-mode', 'hidden');
+  });
+
   await check('SVG download', async () => {
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-svg')]);
     assert.equal(download.suggestedFilename(), 'shape.svg');

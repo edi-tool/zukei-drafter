@@ -91,6 +91,26 @@ test('buildScene3D: cylinder = top rim + visible/hidden halves of the bottom rim
   assertInsideWithMargin(scene);
 });
 
+test('buildScene2D: annotations off by default (4th arg omitted) renders exactly like v1', () => {
+  const { points } = regularPolygon({ sides: 4, sideLength: 20 });
+  const withoutArg = buildScene2D(points, true, { size: SIZE, margin: MARGIN });
+  const withEmptyAnnotations = buildScene2D(points, true, { size: SIZE, margin: MARGIN }, {});
+  assert.deepEqual(withoutArg, withEmptyAnnotations);
+});
+
+test('buildScene2D: enabling vertex labels grows the canvas so labels are not clipped', () => {
+  const { points } = regularPolygon({ sides: 3, sideLength: 20 });
+  const plain = buildScene2D(points, true, { size: SIZE, margin: MARGIN });
+  const annotated = buildScene2D(points, true, { size: SIZE, margin: MARGIN }, { vertexLabels: { enabled: true, fontSize: 20, distance: 30 } });
+  assert.ok(annotated.width >= plain.width && annotated.height >= plain.height);
+  const labels = annotated.items.filter((it) => it.type === 'text');
+  assert.equal(labels.length, 3);
+  for (const [x, y] of labels.map((l) => l.point)) {
+    assert.ok(x >= 0 && x <= annotated.width, `label x=${x} within canvas width ${annotated.width}`);
+    assert.ok(y >= 0 && y <= annotated.height, `label y=${y} within canvas height ${annotated.height}`);
+  }
+});
+
 test('buildScene3D: cone = visible/hidden base arcs + 2 generators; "hidden" mode drops the dashed arc', () => {
   const dashed = buildScene3D('cone', { radius: 20, height: 50 }, 'oblique', { angleDeg: 30, scale: 0.6 }, {});
   assert.equal(dashed.items.filter((it) => it.type === 'path').length, 2);

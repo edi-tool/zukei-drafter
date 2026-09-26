@@ -10,6 +10,14 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+function escapeText(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// System-only font stack: no external/web fonts, so PNG export (Canvas) never
+// depends on a font that might fail to load or taint the canvas.
+const TEXT_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Arial, sans-serif';
+
 function styleAttrs({ stroke = '#111111', strokeWidth = 2, fill = 'none', dash = false }) {
   const attrs = [
     `stroke="${escapeAttr(stroke)}"`,
@@ -38,6 +46,20 @@ function renderItem(item) {
     }
     case 'path': {
       return `<path d="${item.d}" ${styleAttrs(item)} />`;
+    }
+    case 'ellipse': {
+      const { cx, cy, rx, ry } = item;
+      return `<ellipse cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" ${styleAttrs(item)} />`;
+    }
+    case 'text': {
+      const [x, y] = item.point;
+      const fontSize = item.fontSize ?? 14;
+      const anchor = item.anchor ?? 'middle';
+      const rotation = item.rotation ? ` transform="rotate(${item.rotation.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})"` : '';
+      // No dedicated CSS baseline needed: dominant-baseline="central" plus a
+      // fixed dy nudge keeps digits/letters visually centered across the
+      // browsers this app targets, without relying on font metrics.
+      return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" dy="0.35em" font-size="${fontSize}" font-family="${escapeAttr(TEXT_FONT_FAMILY)}" text-anchor="${escapeAttr(anchor)}" fill="${escapeAttr(item.color ?? '#111111')}" stroke="none"${rotation}>${escapeText(item.text)}</text>`;
     }
     default:
       throw new RangeError(`unknown scene item type: ${item.type}`);
