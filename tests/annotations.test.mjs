@@ -6,6 +6,7 @@ import {
   estimateTextBox,
   formatNumber,
   hasAnnotations,
+  isRightAngle,
   pointInPolygon,
   segmentHitsRect,
   vertexAngles,
@@ -129,6 +130,45 @@ test('annotate2D: nothing enabled gives nothing', () => {
   const res = annotate2D(pts, true, MAP, {});
   assert.deepEqual(res.items, []);
   assert.equal(res.bounds, null);
+});
+
+test('isRightAngle: exact and epsilon-tolerant 90 degrees, but not 89/91 outside epsilon', () => {
+  assert.equal(isRightAngle(90), true);
+  assert.equal(isRightAngle(90.0000003), true, 'within default epsilon (float error)');
+  assert.equal(isRightAngle(89.9999997), true, 'within default epsilon (float error)');
+  assert.equal(isRightAngle(89.4), false);
+  assert.equal(isRightAngle(60), false);
+  assert.equal(isRightAngle(120), false);
+});
+
+test('hasAnnotations treats rightAngles:"auto" as an active annotation on its own', () => {
+  assert.equal(hasAnnotations({ rightAngles: 'auto' }), true);
+  assert.equal(hasAnnotations({ rightAngles: 'hidden' }), false);
+  assert.equal(hasAnnotations(null), false);
+});
+
+test('annotate2D: rightAngles "auto" draws a mark at the 90deg vertex of a 3-4-5 triangle and suppresses its arc/value', () => {
+  const [pts] = SHAPES.triangle345;
+  const { items } = annotate2D(pts, true, MAP, { ...ALL, rightAngles: 'auto' });
+  // The right angle at C (90°) is replaced by a 2-segment mark; the other two
+  // vertices (36.9°, 53.1°) still get their arc + value as usual.
+  assert.equal(items.filter((it) => it.type === 'path').length, 2, 'right-angle vertex has no arc');
+  assert.deepEqual(texts(items).sort(), ['3cm', '4cm', '5cm', '36.9°', '53.1°', 'A', 'B', 'C'].sort(), 'no "90°" label');
+});
+
+test('annotate2D: rightAngles "auto" draws no mark and rightAngles "hidden" is a no-op on a 60deg triangle', () => {
+  const equilateral = regularPolygon({ sides: 3, sideLength: 10 }).points;
+  const auto = annotate2D(equilateral, true, MAP, { rightAngles: 'auto' });
+  const hidden = annotate2D(equilateral, true, MAP, { rightAngles: 'hidden' });
+  assert.deepEqual(auto.items, [], 'no 90 degree corners on an equilateral triangle');
+  assert.deepEqual(hidden.items, []);
+});
+
+test('annotate2D: rightAngles "auto" marks all four corners of a square', () => {
+  const square = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  const { items } = annotate2D(square, true, MAP, { rightAngles: 'auto', fontSize: 18 });
+  assert.equal(items.filter((it) => it.type === 'line').length, 8, 'two line segments per corner x 4 corners');
+  assert.equal(items.filter((it) => it.type === 'text').length, 0, 'no angle labels drawn for the marks themselves');
 });
 
 test('annotate2D: dimension lines add two extension lines, one dimension line and two arrows per edge', () => {

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>図形PNGジェネレーター</title>
+<title>図形作成さん</title>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="icon" href="data:," />
 </head>
 <body>
 <header class="app-header">
-  <h1>図形PNGジェネレーター</h1>
+  <h1>図形作成さん</h1>
   <div class="mode-switch" role="tablist" aria-label="モード切替">
     <button type="button" class="mode-btn active" data-mode="2d" role="tab" aria-selected="true">2次元</button>
     <button type="button" class="mode-btn" data-mode="3d" role="tab" aria-selected="false">3次元</button>
@@ -75,6 +75,7 @@
         <label class="field"><span>頂点数</span>
           <input type="number" id="general-count" min="3" max="20" step="1" value="4" />
         </label>
+        <p class="hint">方向角は基準（右方向・3時の方向）を0度として反時計回りに測った絶対角です。前の辺からの曲がり角ではありません。</p>
         <div id="general-edges"></div>
         <p class="error-message" id="general-error"></p>
       </fieldset>
@@ -84,6 +85,12 @@
         <label class="check-field"><input type="checkbox" id="ann-vertex-names" /> 頂点名（A, B, C…）</label>
         <label class="check-field"><input type="checkbox" id="ann-lengths" /> 辺の長さ</label>
         <label class="check-field"><input type="checkbox" id="ann-angles" /> 角度（内角）</label>
+        <label class="field"><span>直角記号</span>
+          <select id="ann-right-angles">
+            <option value="hidden">非表示</option>
+            <option value="auto">自動（90°で表示）</option>
+          </select>
+        </label>
         <div id="ann-options" hidden>
           <label class="field" id="ann-length-style-field"><span>長さの表示</span>
             <select id="ann-length-style">
