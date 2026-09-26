@@ -1,6 +1,14 @@
 // UI wiring only: reads form state, validates it, calls the pure
 // geometry/scene modules, and renders the resulting SVG. No geometry math here.
-import { regularPolygon, triangleFromSSS, triangleFromSAS, triangleFromASA, generalPolygon } from './geometry2d.js';
+import {
+  regularPolygon,
+  triangleFromSSS,
+  triangleFromSAS,
+  triangleFromASA,
+  generalPolygon,
+  closingEdge,
+  triangleMeasures,
+} from './geometry2d.js';
 import { renderSvgString } from './render-svg.js';
 import { buildScene2D, buildScene3D } from './scene-builder.js';
 import { downloadSvg, downloadPng, svgToPngBlob } from './export-png.js';
@@ -101,6 +109,75 @@ function markInvalidFields() {
     if (bad) el.setAttribute('aria-invalid', 'true');
     else el.removeAttribute('aria-invalid');
   }
+}
+
+// ---------- sliders ----------
+
+/** Pair every <input data-slider="min,max,step"> with a range slider. */
+function buildSliders() {
+  for (const input of document.querySelectorAll('input[data-slider]')) {
+    const [min, max, step] = input.dataset.slider.split(',');
+    const range = Object.assign(document.createElement('input'), { type: 'range', min, max, step, tabIndex: -1 });
+    range.className = 'slider';
+    range.setAttribute('aria-hidden', 'true');
+    range.addEventListener('input', () => {
+      input.value = range.value;
+    });
+    const pair = document.createElement('div');
+    pair.className = 'slider-pair';
+    input.before(pair);
+    pair.append(range, input);
+  }
+}
+
+function syncSliders() {
+  for (const range of document.querySelectorAll('.slider-pair .slider')) {
+    const value = readNumber(range.nextElementSibling);
+    if (Number.isFinite(value)) range.value = value;
+  }
+}
+
+// ---------- triangle helper ----------
+
+// Schematic of which parts each construction method takes (given = accent).
+const TRIANGLE_GIVEN = {
+  sss: { sides: ['AB', 'CA', 'BC'], angles: [] },
+  sas: { sides: ['AB', 'CA'], angles: ['A'] },
+  asa: { sides: ['AB'], angles: ['A', 'B'] },
+};
+
+function renderTriangleDiagram() {
+  const given = TRIANGLE_GIVEN[$('triangle-method').value];
+  const P = { A: [30, 100], B: [190, 100], C: [80, 22] };
+  const side = (name) => {
+    const [p, q] = [P[name[0]], P[name[1]]];
+    return `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" class="${given.sides.includes(name) ? 'given' : 'other'}" />`;
+  };
+  const arc = (v) => {
+    const [cx, cy] = P[v];
+    const [a, b] = v === 'A' ? [P.B, P.C] : [P.C, P.A];
+    const at = (q) => {
+      const d = Math.hypot(q[0] - cx, q[1] - cy);
+      return [cx + ((q[0] - cx) * 18) / d, cy + ((q[1] - cy) * 18) / d].map((n) => n.toFixed(1));
+    };
+    const [p1, p2] = [at(a), at(b)];
+    return `<path d="M${p1} A18 18 0 0 0 ${p2}" class="given" fill="none" />`;
+  };
+  const label = (v, dx, dy) => `<text x="${P[v][0] + dx}" y="${P[v][1] + dy}" class="${given.angles.includes(v) ? 'given-label' : ''}">${v}</text>`;
+  $('triangle-diagram').innerHTML = `<svg viewBox="0 0 220 120">${['AB', 'BC', 'CA'].map(side).join('')}${given.angles.map(arc).join('')}${label('A', -14, 12)}${label('B', 6, 12)}${label('C', -4, -8)}</svg>`;
+}
+
+const fmt = (v) => String(Number(v.toFixed(2)));
+
+function showTriangleMeasures(points) {
+  if (!points) {
+    $('triangle-measures').textContent = '';
+    return;
+  }
+  const { sides, angles } = triangleMeasures(points);
+  $('triangle-measures').textContent =
+    `辺: AB = ${fmt(sides.AB)}, BC = ${fmt(sides.BC)}, CA = ${fmt(sides.CA)}　` +
+    `角: A = ${fmt(angles.A)}°, B = ${fmt(angles.B)}°, C = ${fmt(angles.C)}°`;
 }
 
 // ---------- toast ----------
@@ -274,13 +351,30 @@ function compute2DShape() {
     }
     if (!result.ok) {
       $('triangle-error').textContent = result.reason;
+      showTriangleMeasures(null);
       return null;
     }
+    showTriangleMeasures(result.points);
     return { points: result.points, closed: true };
   }
 
-  const lengths = [...document.querySelectorAll('.general-length')].map(readNumber);
-  const headingsDeg = [...document.querySelectorAll('.general-heading')].map(readNumber);
+  const lengthInputs = [...document.querySelectorAll('.general-length')];
+  const headingInputs = [...document.querySelectorAll('.general-heading')];
+  const autoClose = $('general-autoclose').checked;
+  lengthInputs.at(-1).readOnly = headingInputs.at(-1).readOnly = autoClose;
+  const lengths = lengthInputs.map(readNumber);
+  const headingsDeg = headingInputs.map(readNumber);
+  if (autoClose) {
+    const last = closingEdge({ lengths: lengths.slice(0, -1), headingsDeg: headingsDeg.slice(0, -1) });
+    if (!last.ok) {
+      $('general-error').textContent = last.reason;
+      return null;
+    }
+    lengths[lengths.length - 1] = last.length;
+    headingsDeg[headingsDeg.length - 1] = last.headingDeg;
+    lengthInputs.at(-1).value = Number(last.length.toFixed(6));
+    headingInputs.at(-1).value = Number(last.headingDeg.toFixed(6));
+  }
   const result = generalPolygon({ lengths, headingsDeg });
   if (!result.ok) {
     $('general-error').textContent = result.reason;
@@ -470,6 +564,8 @@ function syncVisibility() {
   $('ann-unit-field').hidden = !$('ann-lengths').checked;
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
   syncChips();
+  syncSliders();
+  renderTriangleDiagram();
 }
 
 function wireEvents() {
@@ -564,6 +660,7 @@ function wireEvents() {
 
 buildGeneralEdgeInputs();
 buildShape3DFields();
+buildSliders();
 wireEvents();
 defaults = collectState();
 const initial = decodeState(location.hash);

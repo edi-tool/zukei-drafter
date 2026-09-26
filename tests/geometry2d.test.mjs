@@ -145,3 +145,30 @@ test('general polygon: invalid lengths / headings are reported, not drawn', () =
   assert.equal(generalPolygon({ lengths: [4, 0, 4], headingsDeg: [0, 120, 240] }).ok, false);
   assert.equal(generalPolygon({ lengths: [4, 4, 4], headingsDeg: [0, NaN, 240] }).ok, false);
 });
+
+test('closingEdge: completes a square and a 3-4-5 triangle', async () => {
+  const { closingEdge, generalPolygon } = await import('../js/geometry2d.js');
+  const sq = closingEdge({ lengths: [10, 10, 10], headingsDeg: [0, 90, 180] });
+  assert.ok(sq.ok);
+  assert.ok(Math.abs(sq.length - 10) < 1e-9);
+  assert.ok(Math.abs(sq.headingDeg - 270) < 1e-9);
+  const tri = closingEdge({ lengths: [4, 3], headingsDeg: [0, 90] });
+  assert.ok(Math.abs(tri.length - 5) < 1e-9);
+  const poly = generalPolygon({ lengths: [4, 3, tri.length], headingsDeg: [0, 90, tri.headingDeg] });
+  assert.equal(poly.closed, true);
+});
+
+test('closingEdge: rejects invalid input and an already-closed path', async () => {
+  const { closingEdge } = await import('../js/geometry2d.js');
+  assert.equal(closingEdge({ lengths: [1, NaN], headingsDeg: [0, 90] }).ok, false);
+  assert.equal(closingEdge({ lengths: [5, 5], headingsDeg: [0, 180] }).ok, false);
+});
+
+test('triangleMeasures: 3-4-5 right triangle', async () => {
+  const { triangleMeasures, triangleFromSSS } = await import('../js/geometry2d.js');
+  const { points } = triangleFromSSS({ a: 4, b: 3, c: 5 });
+  const m = triangleMeasures(points);
+  assert.ok(Math.abs(m.sides.BC - 5) < 1e-9 && Math.abs(m.sides.CA - 3) < 1e-9);
+  assert.ok(Math.abs(m.angles.A - 90) < 1e-9);
+  assert.ok(Math.abs(m.angles.A + m.angles.B + m.angles.C - 180) < 1e-9);
+});
