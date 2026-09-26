@@ -431,3 +431,94 @@ body {
     flex: 1;
   }
 }
+
+/* ---------- slider + number pairs ---------- */
+
+.slider-pair {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  gap: 10px;
+  align-items: center;
+}
+
+.slider-pair input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  padding: 0;
+  border: none;
+}
+
+/* ---------- triangle helper ---------- */
+
+.triangle-diagram svg {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.triangle-diagram .given {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.triangle-diagram .other {
+  stroke: #b5bcc6;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.triangle-diagram text {
+  font-size: 12px;
+  fill: #555;
+  stroke: none;
+}
+
+.triangle-diagram text.given-label {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+.measure-info {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.8rem;
+  color: #333;
+  line-height: 1.5;
+}
+
+.measure-info:empty {
+  display: none;
+}
+
+.edge-row input[readonly] {
+  background: var(--bg);
+  color: #555;
+}
+
+/* Edge table: keep all three columns inside the fieldset. */
+.edge-row {
+  grid-template-columns: 2.6em minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.edge-row > span {
+  white-space: nowrap;
+}
+
+.edge-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+#general-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
