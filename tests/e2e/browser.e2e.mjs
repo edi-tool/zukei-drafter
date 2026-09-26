@@ -144,6 +144,31 @@ try {
     assert.equal(await page.locator('#ann-options').isVisible(), false);
   });
 
+  await check('right-angle mark: "auto" detects the 90° corner of a 3-4-5 triangle and suppresses its angle label', async () => {
+    const textsNow = () => page.$$eval('#preview svg text', (els) => els.map((e) => e.textContent).sort());
+
+    // Right-angle marks work even with the angle arcs/labels turned off.
+    assert.equal(await page.locator('#ann-options').isVisible(), false);
+    await page.selectOption('#ann-right-angles', 'auto');
+    assert.equal(await page.locator('#ann-options').isVisible(), true, 'font-size etc. become relevant once a mark can be drawn');
+    assert.equal(await count('text'), 0, 'no angle labels are drawn just for the mark');
+    const linesWithMarkOnly = await count('line');
+    assert.ok(linesWithMarkOnly > 0, 'the mark itself is drawn as line segments');
+
+    await page.check('#ann-angles');
+    await set('#ann-decimals', 0);
+    assert.deepEqual(await textsNow(), ['37°', '53°'], '90° label is replaced by the right-angle mark, not duplicated');
+    assert.equal(await count('line'), linesWithMarkOnly, 'same mark, now alongside the other two angle arcs');
+
+    await page.selectOption('#ann-right-angles', 'hidden');
+    assert.deepEqual(await textsNow(), ['37°', '53°', '90°'], 'back to a normal arc + label once "hidden" is selected');
+
+    await page.uncheck('#ann-angles');
+    await page.selectOption('#ann-right-angles', 'hidden');
+    assert.equal(await count('text'), 0);
+    assert.equal(await page.locator('#ann-options').isVisible(), false);
+  });
+
   await check('annotations: text in the PNG matches the browser\'s own glyphs and stays inside the image', async () => {
     await page.selectOption('#shape2d-type', 'regular');
     await page.check('#ann-vertex-names');

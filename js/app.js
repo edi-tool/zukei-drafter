@@ -110,12 +110,14 @@ function currentAnnotation() {
   const lengths = $('ann-lengths').checked ? $('ann-length-style').value : 'none';
   const vertexNames = $('ann-vertex-names').checked;
   const angles = $('ann-angles').checked;
-  if (!vertexNames && !angles && lengths === 'none') return null;
+  const rightAngles = $('ann-right-angles').value;
+  if (!vertexNames && !angles && rightAngles !== 'auto' && lengths === 'none') return null;
   const decimals = readNumber($('ann-decimals'));
   const fontSize = readNumber($('ann-font-size'));
   return {
     vertexNames,
     angles,
+    rightAngles,
     lengths,
     unit: $('ann-unit').value.trim(),
     decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 4 ? decimals : 1,
@@ -267,7 +269,8 @@ function syncVisibility() {
   $('triangle-sas').hidden = method !== 'sas';
   $('triangle-asa').hidden = method !== 'asa';
   $('oblique-params').hidden = $('projection-type').value !== 'oblique';
-  const anyAnnotation = ['ann-vertex-names', 'ann-lengths', 'ann-angles'].some((id) => $(id).checked);
+  const anyAnnotation =
+    ['ann-vertex-names', 'ann-lengths', 'ann-angles'].some((id) => $(id).checked) || $('ann-right-angles').value === 'auto';
   $('ann-options').hidden = !anyAnnotation;
   $('ann-length-style-field').hidden = !$('ann-lengths').checked;
   $('ann-unit-field').hidden = !$('ann-lengths').checked;

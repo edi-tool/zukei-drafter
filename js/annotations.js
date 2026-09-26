@@ -18,6 +18,7 @@ const DEFAULTS = {
   vertexNames: false,
   lengths: 'none', // 'none' | 'label' | 'dimension'
   angles: false,
+  rightAngles: 'hidden', // 'hidden' | 'auto'
   unit: '',
   decimals: 1,
   fontSize: 18,
@@ -30,9 +31,18 @@ const BASELINE_SHIFT = 0.36;
 /** Height of the estimated text box, in em. */
 const BOX_HEIGHT = 1.0;
 
+/** Tolerance for "auto" right-angle detection, to absorb floating-point error. */
+export const RIGHT_ANGLE_EPSILON_DEG = 0.5;
+
+export function isRightAngle(interiorDeg, epsilonDeg = RIGHT_ANGLE_EPSILON_DEG) {
+  return Math.abs(interiorDeg - 90) <= epsilonDeg;
+}
+
 export function hasAnnotations(options) {
   if (!options) return false;
-  return Boolean(options.vertexNames || options.angles || (options.lengths && options.lengths !== 'none'));
+  return Boolean(
+    options.vertexNames || options.angles || options.rightAngles === 'auto' || (options.lengths && options.lengths !== 'none'),
+  );
 }
 
 /** Fixed decimals, then trailing zeros dropped: (40, 1) -> "40", (36.87, 1) -> "36.9". */
@@ -323,12 +333,32 @@ export function annotate2D(points, closed, map, options = {}) {
 
   const angles = vertexAngles(px, closed);
 
+  // Right-angle marks: a small square at ~90deg vertices instead of an arc,
+  // matching the textbook convention. Drawn before the angle-arc loop so a
+  // right-angle vertex can skip its arc/value below (no duplicate marker).
+  if (o.rightAngles === 'auto') {
+    for (let i = 0; i < n; i++) {
+      const a = angles[i];
+      if (!a || !isRightAngle(a.interiorDeg)) continue;
+      const v = px[i];
+      const prevLen = norm(sub(px[(i - 1 + n) % n], v));
+      const nextLen = norm(sub(px[(i + 1) % n], v));
+      const markSize = Math.min(o.fontSize * 0.9, 0.3 * Math.min(prevLen, nextLen));
+      const p1 = add(v, mul(a.e1, markSize));
+      const p2 = add(p1, mul(a.e2, markSize));
+      const p3 = add(v, mul(a.e2, markSize));
+      addLine(p1, p2);
+      addLine(p2, p3);
+    }
+  }
+
   // Interior angle arcs
   const arcs = [];
   if (o.angles) {
     for (let i = 0; i < n; i++) {
       const a = angles[i];
       if (!a) continue;
+      if (o.rightAngles === 'auto' && isRightAngle(a.interiorDeg)) continue; // right-angle mark drawn above instead
       const v = px[i];
       const prevLen = norm(sub(px[(i - 1 + n) % n], v));
       const nextLen = norm(sub(px[(i + 1) % n], v));
