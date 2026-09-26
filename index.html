@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>図形PNGジェネレーター</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:," />
+</head>
+<body>
+<header class="app-header">
+  <h1>図形PNGジェネレーター</h1>
+  <div class="mode-switch" role="tablist" aria-label="モード切替">
+    <button type="button" class="mode-btn active" data-mode="2d" role="tab" aria-selected="true">2次元</button>
+    <button type="button" class="mode-btn" data-mode="3d" role="tab" aria-selected="false">3次元</button>
+  </div>
+</header>
+
+<main class="app-main">
+  <section class="panel" id="panel">
+    <!-- 2D panel -->
+    <div class="mode-panel" id="panel-2d">
+      <label class="field">
+        <span>種類</span>
+        <select id="shape2d-type">
+          <option value="regular">正多角形</option>
+          <option value="triangle">三角形</option>
+          <option value="general">一般多角形</option>
+        </select>
+      </label>
+
+      <fieldset id="fieldset-regular" class="shape-fieldset">
+        <legend>正多角形</legend>
+        <label class="field"><span>頂点数 (3〜20)</span>
+          <input type="number" id="regular-sides" min="3" max="20" step="1" value="6" />
+        </label>
+        <label class="field"><span>一辺の長さ</span>
+          <input type="number" id="regular-side-length" min="0.01" step="0.1" value="40" />
+        </label>
+        <label class="field"><span>回転角 (度)</span>
+          <input type="number" id="regular-rotation" step="1" value="0" />
+        </label>
+      </fieldset>
+
+      <fieldset id="fieldset-triangle" class="shape-fieldset" hidden>
+        <legend>三角形</legend>
+        <label class="field"><span>構成方法</span>
+          <select id="triangle-method">
+            <option value="sss">SSS（3辺）</option>
+            <option value="sas">SAS（2辺と間の角）</option>
+            <option value="asa">ASA（1辺と両端の角）</option>
+          </select>
+        </label>
+        <div id="triangle-sss" class="triangle-inputs">
+          <label class="field"><span>辺 a</span><input type="number" id="sss-a" min="0.01" step="0.1" value="50" /></label>
+          <label class="field"><span>辺 b</span><input type="number" id="sss-b" min="0.01" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 c</span><input type="number" id="sss-c" min="0.01" step="0.1" value="70" /></label>
+        </div>
+        <div id="triangle-sas" class="triangle-inputs" hidden>
+          <label class="field"><span>辺 a</span><input type="number" id="sas-a" min="0.01" step="0.1" value="50" /></label>
+          <label class="field"><span>間の角 C (度)</span><input type="number" id="sas-angle" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 b</span><input type="number" id="sas-b" min="0.01" step="0.1" value="60" /></label>
+        </div>
+        <div id="triangle-asa" class="triangle-inputs" hidden>
+          <label class="field"><span>辺 (A-B間)</span><input type="number" id="asa-side" min="0.01" step="0.1" value="60" /></label>
+          <label class="field"><span>角 A (度)</span><input type="number" id="asa-angle-a" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>角 B (度)</span><input type="number" id="asa-angle-b" min="0.01" max="179.99" step="0.1" value="60" /></label>
+        </div>
+        <p class="error-message" id="triangle-error"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-general" class="shape-fieldset" hidden>
+        <legend>一般多角形</legend>
+        <label class="field"><span>頂点数</span>
+          <input type="number" id="general-count" min="3" max="20" step="1" value="4" />
+        </label>
+        <div id="general-edges"></div>
+        <p class="error-message" id="general-error"></p>
+      </fieldset>
+    </div>
+
+    <!-- 3D panel -->
+    <div class="mode-panel" id="panel-3d" hidden>
+      <label class="field">
+        <span>形状</span>
+        <select id="shape3d-type">
+          <option value="cube">立方体</option>
+          <option value="box">直方体</option>
+          <option value="triangularPrism">三角柱</option>
+          <option value="quadrangularPrism">四角柱</option>
+          <option value="triangularPyramid">三角錐</option>
+          <option value="quadrangularPyramid">四角錐</option>
+          <option value="cylinder">円柱</option>
+          <option value="cone">円錐</option>
+        </select>
+      </label>
+      <div id="shape3d-params"></div>
+
+      <label class="field">
+        <span>投影法</span>
+        <select id="projection-type">
+          <option value="isometric">等角投影</option>
+          <option value="cavalier">カバリエ投影</option>
+          <option value="cabinet">キャビネット投影</option>
+          <option value="oblique">任意斜投影</option>
+        </select>
+      </label>
+      <div id="oblique-params" hidden>
+        <label class="field"><span>奥行き方向角度 (度)</span>
+          <input type="number" id="oblique-angle" step="1" value="45" />
+        </label>
+        <label class="field"><span>奥行き倍率</span>
+          <input type="number" id="oblique-scale" step="0.05" min="0" max="2" value="0.5" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>隠線</span>
+        <select id="hidden-line-mode">
+          <option value="dashed">破線で表示</option>
+          <option value="hidden">表示しない</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset class="shape-fieldset">
+      <legend>線・塗りの設定</legend>
+      <label class="field"><span>線色</span><input type="color" id="style-stroke" value="#111111" /></label>
+      <label class="field"><span>線幅</span><input type="number" id="style-stroke-width" min="0.5" step="0.5" value="2" /></label>
+      <label class="field"><span>塗り</span>
+        <select id="style-fill-mode">
+          <option value="none">なし</option>
+          <option value="white">白</option>
+          <option value="custom">任意色</option>
+        </select>
+      </label>
+      <input type="color" id="style-fill-color" value="#ffffff" hidden />
+    </fieldset>
+
+    <fieldset class="shape-fieldset">
+      <legend>PNG出力設定</legend>
+      <label class="field"><span>背景</span>
+        <select id="png-background">
+          <option value="transparent">透明</option>
+          <option value="white">白</option>
+        </select>
+      </label>
+      <label class="field"><span>解像度</span>
+        <select id="png-resolution">
+          <option value="1">1x (600px)</option>
+          <option value="2" selected>2x (1200px)</option>
+          <option value="4">4x (2400px)</option>
+        </select>
+      </label>
+      <div class="button-row">
+        <button type="button" id="btn-save-png">PNGを保存</button>
+        <button type="button" id="btn-save-svg">SVGを保存</button>
+      </div>
+    </fieldset>
+  </section>
+
+  <section class="preview-area">
+    <div id="preview" class="preview-surface" aria-live="polite"></div>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
