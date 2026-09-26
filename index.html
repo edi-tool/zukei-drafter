@@ -147,19 +147,21 @@
         <label class="check-field"><input type="checkbox" id="ann-vertex-names" /> 頂点名（A, B, C…）</label>
         <label class="check-field"><input type="checkbox" id="ann-lengths" /> 辺の長さ</label>
         <label class="check-field"><input type="checkbox" id="ann-angles" /> 角度（内角）</label>
-        <label class="field"><span>直角記号</span>
-          <select id="ann-right-angles">
-            <option value="hidden">非表示</option>
-            <option value="auto">自動（90°で表示）</option>
+        <div class="field"><span id="ann-right-angles-label">直角記号</span>
+          <div class="chips" data-for="ann-right-angles" aria-labelledby="ann-right-angles-label"></div>
+          <select id="ann-right-angles" hidden>
+            <option value="hidden">表示しない</option>
+            <option value="auto">90°の角に表示</option>
           </select>
-        </label>
+        </div>
         <div id="ann-options" hidden>
-          <label class="field" id="ann-length-style-field"><span>長さの表示</span>
-            <select id="ann-length-style">
+          <div class="field" id="ann-length-style-field"><span id="ann-length-style-label">長さの表示</span>
+            <div class="chips" data-for="ann-length-style" aria-labelledby="ann-length-style-label"></div>
+            <select id="ann-length-style" hidden>
               <option value="label">数値のみ</option>
               <option value="dimension">寸法線</option>
             </select>
-          </label>
+          </div>
           <label class="field" id="ann-unit-field"><span>長さの単位（例: cm、空欄可）</span>
             <input type="text" id="ann-unit" maxlength="8" value="" />
           </label>
@@ -212,61 +214,74 @@
         <p class="error-message" id="oblique-error"></p>
       </div>
 
-      <label class="field">
-        <span>隠線</span>
-        <select id="hidden-line-mode">
+      <div class="field">
+        <span id="hidden-line-mode-label">隠線（見えない辺）</span>
+        <div class="chips" data-for="hidden-line-mode" aria-labelledby="hidden-line-mode-label"></div>
+        <select id="hidden-line-mode" hidden>
           <option value="dashed">破線で表示</option>
           <option value="hidden">表示しない</option>
         </select>
-      </label>
+      </div>
     </div>
 
     <fieldset class="shape-fieldset">
       <legend>線・塗りの設定</legend>
-      <label class="field"><span>線色</span><input type="color" id="style-stroke" value="#111111" /></label>
       <label class="field"><span>線幅</span><input type="number" required id="style-stroke-width" data-slider="0.5,8,0.5" min="0.5" step="0.5" value="2" /></label>
-      <label class="field"><span>塗り</span>
-        <select id="style-fill-mode">
-          <option value="none">なし</option>
-          <option value="white">白</option>
-          <option value="custom">任意色</option>
-        </select>
-      </label>
-      <input type="color" id="style-fill-color" value="#ffffff" hidden />
+      <div class="color-row">
+        <label class="field"><span>線の色</span><input type="color" id="style-stroke" value="#111111" /></label>
+        <div class="field"><span id="style-fill-mode-label">塗り</span>
+          <div class="chips" data-for="style-fill-mode" aria-labelledby="style-fill-mode-label"></div>
+          <select id="style-fill-mode" hidden>
+            <option value="none">なし</option>
+            <option value="white">白</option>
+            <option value="custom">色</option>
+          </select>
+        </div>
+        <input type="color" id="style-fill-color" value="#ffffff" aria-label="塗りの色" hidden />
+      </div>
     </fieldset>
 
-    <fieldset class="shape-fieldset export-fieldset">
-      <legend>PNG出力設定</legend>
-      <label class="field"><span>背景</span>
-        <select id="png-background">
-          <option value="transparent">透明</option>
-          <option value="white">白</option>
-        </select>
-      </label>
-      <label class="field"><span>解像度</span>
-        <select id="png-resolution">
-          <option value="1">1x</option>
-          <option value="2" selected>2x</option>
-          <option value="4">4x</option>
-          <option value="custom">幅を指定</option>
-        </select>
-      </label>
-      <label class="field" id="png-custom-width-field" hidden><span>出力幅 (px)</span>
-        <input type="number" required id="png-custom-width" min="16" max="10000" step="1" value="3000" />
-      </label>
+  </section>
+
+  <div class="stage">
+    <section class="preview-area" aria-label="プレビュー">
+      <div id="preview" class="preview-surface" aria-live="polite"></div>
+      <div class="preview-bar">
+        <p class="preview-caption" id="preview-caption"></p>
+        <button type="button" class="jump-save" id="btn-jump-save">保存へ ↓</button>
+      </div>
+    </section>
+
+    <section class="export-bar" id="export-bar" aria-label="保存">
+      <div class="export-options">
+        <div class="field"><span id="png-background-label">背景</span>
+          <div class="chips" data-for="png-background" aria-labelledby="png-background-label"></div>
+          <select id="png-background" hidden>
+            <option value="transparent">透明</option>
+            <option value="white">白</option>
+          </select>
+        </div>
+        <div class="field"><span id="png-resolution-label">PNGの大きさ</span>
+          <div class="chips" data-for="png-resolution" aria-labelledby="png-resolution-label"></div>
+          <select id="png-resolution" hidden>
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="4">4x</option>
+            <option value="custom">幅を指定</option>
+          </select>
+        </div>
+        <label class="field" id="png-custom-width-field" hidden><span>出力幅 (px)</span>
+          <input type="number" required id="png-custom-width" min="16" max="10000" step="1" value="3000" />
+        </label>
+      </div>
       <p class="hint" id="png-size-info"></p>
       <div class="button-row">
-        <button type="button" id="btn-save-png">PNGを保存</button>
-        <button type="button" id="btn-save-svg">SVGを保存</button>
+        <button type="button" class="primary-btn" id="btn-save-png" title="PNGを保存（Ctrl+S）">PNGを保存</button>
+        <button type="button" class="secondary-btn" id="btn-save-svg">SVGを保存</button>
+        <button type="button" class="secondary-btn" id="btn-copy-png" title="Word・PowerPoint などにそのまま貼り付けられます">画像をコピー</button>
       </div>
-      <button type="button" class="secondary-btn" id="btn-copy-png" title="Word・PowerPoint などにそのまま貼り付けられます">PNGをクリップボードにコピー</button>
-    </fieldset>
-  </section>
-
-  <section class="preview-area">
-    <div id="preview" class="preview-surface" aria-live="polite"></div>
-    <p class="preview-caption" id="preview-caption"></p>
-  </section>
+    </section>
+  </div>
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

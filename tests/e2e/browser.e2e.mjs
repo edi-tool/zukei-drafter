@@ -148,7 +148,7 @@ try {
     await page.check('#ann-lengths');
     await set('#ann-unit', 'cm');
     assert.deepEqual(await textsNow(), ['3cm', '4cm', '5cm', 'A', 'B', 'C']);
-    await page.selectOption('#ann-length-style', 'dimension');
+    await choose('ann-length-style', 'dimension');
     assert.equal(await count('line'), 9, '2 extension lines + 1 dimension line per edge');
     assert.equal(await count('polygon'), 1 + 6, 'figure + 2 arrowheads per edge');
 
@@ -169,7 +169,7 @@ try {
 
     // Right-angle marks work even with the angle arcs/labels turned off.
     assert.equal(await page.locator('#ann-options').isVisible(), false);
-    await page.selectOption('#ann-right-angles', 'auto');
+    await choose('ann-right-angles', 'auto');
     assert.equal(await page.locator('#ann-options').isVisible(), true, 'font-size etc. become relevant once a mark can be drawn');
     assert.equal(await count('text'), 0, 'no angle labels are drawn just for the mark');
     const linesWithMarkOnly = await count('line');
@@ -180,11 +180,11 @@ try {
     assert.deepEqual(await textsNow(), ['37°', '53°'], '90° label is replaced by the right-angle mark, not duplicated');
     assert.equal(await count('line'), linesWithMarkOnly, 'same mark, now alongside the other two angle arcs');
 
-    await page.selectOption('#ann-right-angles', 'hidden');
+    await choose('ann-right-angles', 'hidden');
     assert.deepEqual(await textsNow(), ['37°', '53°', '90°'], 'back to a normal arc + label once "hidden" is selected');
 
     await page.uncheck('#ann-angles');
-    await page.selectOption('#ann-right-angles', 'hidden');
+    await choose('ann-right-angles', 'hidden');
     assert.equal(await count('text'), 0);
     assert.equal(await page.locator('#ann-options').isVisible(), false);
   });
@@ -196,7 +196,7 @@ try {
     await page.check('#ann-angles');
     await set('#ann-decimals', 1);
     await set('#ann-unit', 'cm');
-    await page.selectOption('#ann-length-style', 'label');
+    await choose('ann-length-style', 'label');
     const result = await page.evaluate(async () => {
       const { svgToPngBlob } = await import('./js/export-png.js');
       const { estimateTextBox } = await import('./js/annotations.js');
@@ -271,7 +271,7 @@ try {
     await check(`3D cube (${projection}): 12 edges, 3 dashed`, async () => {
       await choose('shape3d-type', 'cube');
       await choose('projection-type', projection);
-      await page.selectOption('#hidden-line-mode', 'dashed');
+      await choose('hidden-line-mode', 'dashed');
       assert.equal(await count('line'), 12);
       assert.equal(await dashed(), 3);
     });
@@ -292,10 +292,10 @@ try {
   await check('3D cylinder: hidden back arc is dashed or omitted per setting', async () => {
     await choose('shape3d-type', 'cylinder');
     await choose('projection-type', 'cabinet');
-    await page.selectOption('#hidden-line-mode', 'dashed');
+    await choose('hidden-line-mode', 'dashed');
     assert.equal(await count('path'), 3);
     assert.equal(await dashed(), 1);
-    await page.selectOption('#hidden-line-mode', 'hidden');
+    await choose('hidden-line-mode', 'hidden');
     assert.equal(await count('path'), 2);
     assert.equal(await dashed(), 0);
   });
@@ -314,7 +314,7 @@ try {
 
   await check('PNG download: 4x preset gives > 2000px with the reported size', async () => {
     await choose('shape3d-type', 'box');
-    await page.selectOption('#png-resolution', '4');
+    await choose('png-resolution', '4');
     const info = await page.locator('#png-size-info').innerText();
     const [, w, h] = info.match(/(\d+) × (\d+)/).map(Number);
     assert.ok(w > 2000);
@@ -325,7 +325,7 @@ try {
   });
 
   await check('PNG custom width keeps the figure aspect ratio', async () => {
-    await page.selectOption('#png-resolution', 'custom');
+    await choose('png-resolution', 'custom');
     await set('#png-custom-width', 2500);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-png')]);
     const { width, height } = pngInfo(await readFile(await download.path()));
@@ -448,6 +448,52 @@ try {
     await page.uncheck('#general-autoclose');
     page.once('dialog', (d) => d.accept());
     await page.click('#btn-reset');
+  });
+
+  await check('touch aids: −/+ steppers nudge and clamp, export settings live in the URL', async () => {
+    await choose('shape2d-type', 'regular');
+    await set('#regular-side-length', 40);
+    await page.click('.stepper-btn[aria-label="一辺の長さを増やす"]');
+    assert.equal(await page.inputValue('#regular-side-length'), '41');
+    await set('#regular-side-length', 0.5);
+    await page.click('.stepper-btn[aria-label="一辺の長さを減らす"]');
+    assert.equal(await page.inputValue('#regular-side-length'), '0.01', 'clamped to min');
+    await choose('shape2d-type', 'general');
+    await set('#general-count', 4);
+    await page.click('.stepper-btn[aria-label="頂点数を増やす"]');
+    assert.equal(await page.locator('.general-length').count(), 5, 'stepper rebuilds the edge rows');
+
+    await choose('png-background', 'white');
+    await page.waitForURL(/png-background=white/);
+    await page.reload();
+    await page.waitForSelector('#preview svg');
+    assert.equal(await page.inputValue('#png-background'), 'white');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#btn-reset');
+    assert.equal(await page.inputValue('#png-background'), 'transparent');
+  });
+
+  await check('phone layout: preview stays in view while scrolling, no sideways scroll', async () => {
+    const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    try {
+      await phone.goto(baseUrl);
+      await phone.waitForSelector('#preview svg');
+      await phone.evaluate(() => window.scrollTo(0, 900));
+      const box = await phone.locator('#preview').boundingBox();
+      assert.ok(box.y >= 0 && box.y < 40, `preview top after scrolling: ${box.y}`);
+      await phone.click('#btn-jump-save');
+      await phone.locator('#btn-save-png').waitFor();
+      await phone.waitForFunction(() => document.querySelector('#btn-save-png').getBoundingClientRect().bottom <= window.innerHeight);
+      assert.equal(new URL(phone.url()).hash, '', 'jumping to the save buttons leaves the URL state alone');
+      const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
+      for (const sel of ['.chip', '.stepper-btn', '#btn-save-png', '.mode-btn']) {
+        const { height } = await phone.locator(sel).first().boundingBox();
+        assert.ok(height >= 40, `${sel} is ${height}px tall`);
+      }
+    } finally {
+      await phone.close();
+    }
   });
 
   await check('no console errors or warnings during the whole session', async () => {
