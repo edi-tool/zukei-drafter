@@ -59,8 +59,8 @@ python3 -m http.server 8000   # 任意の静的サーバーでOK
   接し、曲線は多角形近似ではなく Bézier 曲線として出力されます。
 
 詳細な設計判断・曖昧点への対応は [REQUIREMENTS.md](./REQUIREMENTS.md) を、
-モジュール構成・数式・データフローは [ARCHITECTURE.md](./ARCHITECTURE.md) を
-参照してください。
+モジュール構成・数式・データフローは [ARCHITECTURE.md](./ARCHITECTURE.md) を、
+開発の現状・経緯・次の作業候補は [HANDOFF.md](./HANDOFF.md) を参照してください。
 
 ## 依存ライブラリについて
 
