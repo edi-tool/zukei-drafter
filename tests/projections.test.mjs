@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectIsometric, projectCavalier, projectCabinet, projectOblique, matrixOf, applyMatrix } from '../js/projections.js';
+import { projectIsometric, projectCavalier, projectCabinet, projectOblique, matrixOf, applyMatrix, viewDirectionOf } from '../js/projections.js';
 
 function closeTo(actual, expected, eps = 1e-9) {
   assert.ok(Math.abs(actual - expected) <= eps, `expected ${actual} to be close to ${expected}`);
@@ -58,4 +58,41 @@ test('oblique projection: generalizes cavalier/cabinet via arbitrary angle+scale
   const [x, y] = projectOblique({ x: 1, y: 2, z: 4 }, { angleDeg: 30, scale: 0.7 });
   closeTo(x, 1 + 4 * 0.7 * Math.cos(Math.PI / 6));
   closeTo(y, 2 + 4 * 0.7 * Math.sin(Math.PI / 6));
+});
+
+const PROJECTIONS = [
+  ['isometric', {}],
+  ['cavalier', {}],
+  ['cabinet', {}],
+  ['oblique', { angleDeg: 30, scale: 0.7 }],
+  ['oblique', { angleDeg: -45, scale: 1.2 }],
+];
+
+for (const [name, options] of PROJECTIONS) {
+  test(`viewDirectionOf(${name} ${JSON.stringify(options)}) is the unit projection direction (maps to the origin)`, () => {
+    const d = viewDirectionOf(name, options);
+    closeTo(Math.hypot(d.x, d.y, d.z), 1);
+    const [x, y] = applyMatrix(matrixOf(name, options), d);
+    closeTo(x, 0);
+    closeTo(y, 0);
+  });
+}
+
+test('matrixOf agrees with the named projection functions', () => {
+  const p = { x: 2, y: -1, z: 3 };
+  const pairs = [
+    [projectCavalier(p), applyMatrix(matrixOf('cavalier'), p)],
+    [projectCabinet(p), applyMatrix(matrixOf('cabinet'), p)],
+    [projectOblique(p, { angleDeg: 20, scale: 0.3 }), applyMatrix(matrixOf('oblique', { angleDeg: 20, scale: 0.3 }), p)],
+  ];
+  for (const [[x1, y1], [x2, y2]] of pairs) {
+    closeTo(x1, x2);
+    closeTo(y1, y2);
+  }
+});
+
+test('oblique viewer sits on the -z side: the x-y picture plane is in front', () => {
+  for (const name of ['cavalier', 'cabinet', 'oblique']) {
+    assert.ok(viewDirectionOf(name).z < 0);
+  }
 });

@@ -11,6 +11,11 @@
   box-sizing: border-box;
 }
 
+/* Components below set display:flex, which would otherwise override [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
@@ -41,6 +46,7 @@ body {
 }
 
 .mode-btn {
+  white-space: nowrap;
   border: none;
   background: transparent;
   padding: 8px 18px;
@@ -119,6 +125,14 @@ body {
   font-size: 0.85rem;
 }
 
+/* Keep the save buttons in view while the rest of the panel scrolls. */
+.export-fieldset {
+  position: sticky;
+  bottom: -16px;
+  background: var(--panel-bg);
+  box-shadow: 0 -8px 12px -8px rgba(0, 0, 0, 0.15);
+}
+
 .error-message {
   color: var(--error);
   font-size: 0.85rem;
@@ -157,13 +171,17 @@ body {
   border-radius: 10px;
   width: 100%;
   min-height: 600px;
+  padding: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .preview-surface svg {
+  display: block;
   max-width: 100%;
+  max-height: calc(100vh - 140px);
+  width: auto;
   height: auto;
   background: transparent;
 }
@@ -177,4 +195,39 @@ body {
     flex: none;
     max-height: none;
   }
+  .export-fieldset {
+    position: static;
+    box-shadow: none;
+  }
+  .preview-surface {
+    min-height: 320px;
+  }
+  /* Show the figure first on narrow screens; the form follows. */
+  .preview-area {
+    order: -1;
+    width: 100%;
+  }
+  .preview-surface svg {
+    max-height: 55vh;
+  }
+  .app-header {
+    padding: 10px 16px;
+  }
+  .app-header h1 {
+    font-size: 1rem;
+  }
+  .mode-btn {
+    padding: 8px 12px;
+  }
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.button-row button:disabled {
+  background: #9aa7bd;
+  cursor: not-allowed;
 }

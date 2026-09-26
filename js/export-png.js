@@ -1,6 +1,5 @@
-// SVG -> Canvas -> PNG export. Browser-only (uses Image/Canvas/Blob), so it
-// is exercised manually in the browser rather than under node:test.
-// Also provides a plain SVG file download for future/parallel use.
+// SVG -> Canvas -> PNG export, plus plain SVG download. Browser-only (uses
+// Image/Canvas/Blob), so it is covered by tests/e2e rather than node:test.
 
 /**
  * Rasterize an SVG string to a PNG Blob at an arbitrary output resolution,
@@ -63,9 +62,3 @@ export async function downloadPng(svgString, options, filename) {
   const blob = await svgToPngBlob(svgString, options);
   downloadBlob(blob, filename);
 }
-
-export const RESOLUTION_PRESETS = [
-  { label: '1x', scale: 1 },
-  { label: '2x', scale: 2 },
-  { label: '4x', scale: 4 },
-];
