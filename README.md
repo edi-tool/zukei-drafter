@@ -1,5 +1,7 @@
 # zukei-drafter（図形PNGジェネレーター）
 
+公開URL: https://edi-tool.github.io/zukei-drafter/
+
 教材・書籍・プリントで使う 2D / 3D 図形を、**数値入力から数学的に生成**し、
 プレビューして高解像度PNG（またはSVG）として保存できる静的Webアプリです。
 
