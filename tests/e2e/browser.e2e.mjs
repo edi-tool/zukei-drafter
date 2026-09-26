@@ -7,6 +7,7 @@
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -32,7 +33,15 @@ const server = createServer(async (req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const baseUrl = `http://127.0.0.1:${server.address().port}/`;
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
+// Fall back to the cloud sessions' preinstalled Chromium when Playwright's own
+// bundled build is missing (its version often differs from the preinstalled one).
+const PREINSTALLED_CHROMIUM = '/opt/pw-browsers/chromium';
+function chromiumPath() {
+  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
+  if (existsSync(chromium.executablePath())) return undefined;
+  return existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM : undefined;
+}
+const browser = await chromium.launch({ executablePath: chromiumPath() });
 const page = await browser.newPage({ acceptDownloads: true });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -109,6 +118,12 @@ try {
     await page.locator('.general-length').first().fill('55');
     assert.match(await page.locator('#general-error').innerText(), /閉じていません（閉合誤差 15\.000）/);
     assert.equal(await count('polyline'), 1);
+    // Changing the edge count keeps what was typed for the surviving edges.
+    await set('#general-count', 8);
+    assert.equal(await page.locator('.general-length').count(), 8);
+    assert.equal(await page.locator('.general-length').first().inputValue(), '55');
+    await set('#general-count', 7);
+    assert.equal(await page.locator('.general-length').first().inputValue(), '55');
   });
 
   await check('annotations: vertex names, lengths (label / dimension line), angles, then off again', async () => {

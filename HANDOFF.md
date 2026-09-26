@@ -37,7 +37,8 @@
 | #7 | #5 のうち #4 に無かった部分（アプリ名変更・直角記号・一般多角形の
   ヒント文）を、#4 の実装（`annotate2D` / `Placer` 等）の上に作り直して追加。
   マージ済み、CI（unit / browser）緑。設計判断は下記「#7 の設計判断」参照 |
-| （本PR） | #7 のマージをこの HANDOFF.md に記録（ドキュメントのみ） |
+| #8 | #7 のマージをこの HANDOFF.md に記録（ドキュメントのみ） |
+| （本PR） | 一般多角形で辺数を変えると入力済みの辺が消える不具合を修正（編集済みなら残る辺の値を保持）。e2e が Playwright 同梱ブラウザ不在時に `/opt/pw-browsers/chromium` を自動で使うように |
 
 #2 で修正した主な不具合（再発防止のため記録）:
 
@@ -115,7 +116,7 @@ npm test                                   # 依存なし、数秒
 npm install && npx playwright install chromium
 npm run test:e2e                           # ブラウザテスト
 CHROMIUM_PATH=/path/to/chromium npm run test:e2e   # 既存の Chromium を使う場合
-                                           # クラウドセッションでは /opt/pw-browsers/chromium
+                                           # クラウドセッションでは /opt/pw-browsers/chromium を自動検出
 ```
 
 * 本番コードは依存ゼロ・ビルドなしを維持する（Playwright は devDependency のみ）。

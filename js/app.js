@@ -8,6 +8,7 @@ import { downloadSvg, downloadPng } from './export-png.js';
 const $ = (id) => document.getElementById(id);
 const num = (id) => Number($(id).value);
 // <input type=number> reports "" (-> 0 via Number) for empty or malformed text.
+const escapeHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const readNumber = (el) => (el.value.trim() === '' ? NaN : Number(el.value));
 
 // Keeps both sides within what every modern browser's canvas supports.
@@ -32,6 +33,14 @@ function currentStyle() {
 function buildGeneralEdgeInputs() {
   const count = Math.max(3, Math.min(20, Math.round(num('general-count')) || 3));
   const container = $('general-edges');
+  // Once the user has edited an edge, keep those values for the edges that
+  // survive a count change; untouched defaults are regenerated for the new count.
+  const edited = container.dataset.edited === 'true';
+  const kept = !edited ? [] : [...container.querySelectorAll('.edge-row')].slice(1).map((row) => ({
+    length: row.querySelector('.general-length').value,
+    heading: row.querySelector('.general-heading').value,
+  }));
+  if (container.children.length - 1 === count) return;
   container.innerHTML = '';
   const header = document.createElement('div');
   header.className = 'edge-row';
@@ -39,13 +48,14 @@ function buildGeneralEdgeInputs() {
   container.appendChild(header);
   for (let i = 0; i < count; i++) {
     // Defaults trace a regular polygon; 10 decimals keeps it within the closure tolerance.
-    const heading = Number(((360 / count) * i).toFixed(10));
+    const heading = i < kept.length ? kept[i].heading : Number(((360 / count) * i).toFixed(10));
+    const length = i < kept.length ? kept[i].length : '40';
     const row = document.createElement('div');
     row.className = 'edge-row';
     row.innerHTML = `
       <span>辺${i + 1}</span>
-      <input type="number" class="general-length" min="0.01" step="0.1" value="40" aria-label="辺${i + 1}の長さ" />
-      <input type="number" class="general-heading" step="any" value="${heading}" aria-label="辺${i + 1}の方向角" />
+      <input type="number" class="general-length" min="0.01" step="0.1" value="${escapeHtml(length)}" aria-label="辺${i + 1}の長さ" />
+      <input type="number" class="general-heading" step="any" value="${escapeHtml(heading)}" aria-label="辺${i + 1}の方向角" />
     `;
     container.appendChild(row);
   }
@@ -284,6 +294,9 @@ function wireEvents() {
 
   // Rebuild dynamic field lists before the generic handler below re-renders.
   $('general-count').addEventListener('input', buildGeneralEdgeInputs);
+  $('general-edges').addEventListener('input', () => {
+    $('general-edges').dataset.edited = 'true';
+  });
   $('shape3d-type').addEventListener('input', buildShape3DFields);
 
   // One delegated handler: any form change re-syncs visibility and re-renders.
