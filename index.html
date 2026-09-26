@@ -3,13 +3,59 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>図形作成さん</title>
+<meta name="theme-color" content="#f8f6f2" />
+
+<title>図形の作成 | 図形作成さん</title>
+<meta name="description" content="教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://edi-tool.github.io/zukei-drafter/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="edi-tool">
+<meta property="og:title" content="図形の作成 | 図形作成さん">
+<meta property="og:description" content="教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
+<meta property="og:url" content="https://edi-tool.github.io/zukei-drafter/">
+<meta property="og:image" content="https://edi-tool.github.io/zukei-drafter/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="favicon.png" type="image/png">
 <link rel="stylesheet" href="css/style.css" />
-<link rel="icon" href="data:," />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "name": "図形作成さん",
+      "url": "https://edi-tool.github.io/zukei-drafter/",
+      "description": "教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。",
+      "applicationCategory": "DesignApplication",
+      "operatingSystem": "Any",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
+      "inLanguage": "ja",
+      "isPartOf": { "@id": "https://edi-tool.github.io/#website" },
+      "publisher": { "@id": "https://edi-tool.github.io/#organization" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "edi-tool", "item": "https://edi-tool.github.io/" },
+        { "@type": "ListItem", "position": 2, "name": "図形作成さん", "item": "https://edi-tool.github.io/zukei-drafter/" }
+      ]
+    }
+  ]
+}
+</script>
 </head>
 <body>
 <header class="app-header">
-  <h1>図形作成さん</h1>
+  <div class="app-header-top">
+    <a class="hub-link" href="https://edi-tool.github.io/">edi-tool</a>
+    <h1>図形作成さん</h1>
+  </div>
   <div class="header-actions">
     <button type="button" class="ghost-btn" id="btn-copy-link" title="今の設定を再現できるリンクをコピー">リンクをコピー</button>
     <button type="button" class="ghost-btn" id="btn-reset" title="すべての入力を初期値に戻す">初期値に戻す</button>
@@ -221,6 +267,11 @@
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<footer class="app-footer">
+  <a href="https://edi-tool.github.io/">&larr; edi-tool ツール一覧</a>
+  <p>&copy; 2026 edi-tool | MIT License</p>
+</footer>
 
 <script type="module" src="js/app.js"></script>
 </body>
