@@ -9,6 +9,8 @@ function deg2rad(deg) {
 
 /**
  * Regular polygon with `sides` vertices, given edge length and rotation.
+ * At rotationDeg = 0 the bottom edge is horizontal (a square is upright, not
+ * a diamond); rotationDeg turns the shape counter-clockwise from there.
  * @returns {{points:[number,number][]}}
  */
 export function regularPolygon({ sides, sideLength, rotationDeg = 0 }) {
@@ -19,25 +21,27 @@ export function regularPolygon({ sides, sideLength, rotationDeg = 0 }) {
     throw new RangeError('sideLength must be > 0');
   }
   const circumradius = sideLength / (2 * Math.sin(Math.PI / sides));
+  const start = -Math.PI / 2 - Math.PI / sides + deg2rad(rotationDeg);
   const points = [];
   for (let i = 0; i < sides; i++) {
-    const angle = deg2rad(rotationDeg) + (2 * Math.PI * i) / sides;
+    const angle = start + (2 * Math.PI * i) / sides;
     points.push([circumradius * Math.cos(angle), circumradius * Math.sin(angle)]);
   }
   return { points };
 }
 
-function isValidTriangleSides(a, b, c) {
-  return a > 0 && b > 0 && c > 0 && a + b > c + EPSILON && b + c > a + EPSILON && a + c > b + EPSILON;
-}
-
 /**
  * Triangle from three side lengths (SSS).
- * Convention: a = |AB|, b = |AC|, c = |BC|.
+ * Convention: a = |AB| (horizontal base), b = |AC|, c = |BC|.
  */
 export function triangleFromSSS({ a, b, c }) {
-  if (!isValidTriangleSides(a, b, c)) {
-    return { ok: false, reason: '三角形の成立条件（三角不等式）を満たしていません。' };
+  if (!(a > 0 && b > 0 && c > 0)) {
+    return { ok: false, reason: '辺の長さは正の数である必要があります。' };
+  }
+  // Relative tolerance so a degenerate (flat) triangle is rejected at any scale.
+  const tol = EPSILON * Math.max(a, b, c);
+  if (!(a + b > c + tol && b + c > a + tol && a + c > b + tol)) {
+    return { ok: false, reason: '三角形の成立条件（どの2辺の和も残りの1辺より長い）を満たしていません。' };
   }
   // Place A at origin, B at (a, 0), solve for C using law of cosines.
   const A = [0, 0];
@@ -51,18 +55,19 @@ export function triangleFromSSS({ a, b, c }) {
 
 /**
  * Triangle from two sides and the included angle (SAS).
- * sideA and sideB share the vertex at the origin; angleC is the angle between them.
+ * sideA = |AB| (horizontal base) and sideB = |AC| meet at vertex A with the
+ * included angle angleA.
  */
-export function triangleFromSAS({ sideA, angleC, sideB }) {
+export function triangleFromSAS({ sideA, angleA, sideB }) {
   if (!(sideA > 0) || !(sideB > 0)) {
     return { ok: false, reason: '辺の長さは正の数である必要があります。' };
   }
-  if (!(angleC > 0 && angleC < 180)) {
+  if (!(angleA > 0 && angleA < 180)) {
     return { ok: false, reason: '角度は 0°〜180° の範囲で指定してください。' };
   }
   const A = [0, 0];
   const B = [sideA, 0];
-  const rad = deg2rad(angleC);
+  const rad = deg2rad(angleA);
   const C = [sideB * Math.cos(rad), sideB * Math.sin(rad)];
   return { ok: true, points: [A, B, C] };
 }
@@ -101,7 +106,10 @@ export function triangleFromASA({ side, angleA, angleB }) {
 /**
  * General polygon defined by a sequence of edge lengths and absolute heading
  * angles (degrees, measured counter-clockwise from the positive x-axis).
- * Does not auto-correct if the path fails to close.
+ * Does not auto-correct if the path fails to close: the open path is returned
+ * together with the closure error (distance from the last point back to the
+ * start). The tolerance is relative to the perimeter so that closure does not
+ * depend on the drawing's scale.
  */
 export function generalPolygon({ lengths, headingsDeg }) {
   if (lengths.length !== headingsDeg.length) {
@@ -109,6 +117,12 @@ export function generalPolygon({ lengths, headingsDeg }) {
   }
   if (lengths.length < 3) {
     throw new RangeError('a polygon needs at least 3 edges');
+  }
+  if (!lengths.every((l) => l > 0)) {
+    return { ok: false, reason: '辺の長さはすべて正の数で入力してください。' };
+  }
+  if (!headingsDeg.every(Number.isFinite)) {
+    return { ok: false, reason: '方向角はすべて数値で入力してください。' };
   }
   const points = [[0, 0]];
   let [x, y] = [0, 0];
@@ -118,42 +132,9 @@ export function generalPolygon({ lengths, headingsDeg }) {
     y += lengths[i] * Math.sin(rad);
     points.push([x, y]);
   }
-  const start = points[0];
-  const end = points[points.length - 1];
-  const closureError = Math.hypot(end[0] - start[0], end[1] - start[1]);
-  const closed = closureError <= EPSILON;
-  // Drop the duplicated closing vertex from the returned point list.
-  const outPoints = closed ? points.slice(0, -1) : points;
-  return { points: outPoints, closed, closureError };
-}
-
-/**
- * Scale + translate a set of 2D points to fit within a target box, preserving
- * aspect ratio, leaving `margin` on every side.
- */
-export function fitToViewBox(points, { width, height, margin = 20 }) {
-  if (points.length === 0) {
-    return { points: [], scale: 1 };
-  }
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  const availW = width - margin * 2;
-  const availH = height - margin * 2;
-  const scale = Math.min(availW / spanX, availH / spanY);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const targetCx = width / 2;
-  const targetCy = height / 2;
-  // Flip Y because SVG y grows downward while our logical coords use math convention.
-  const fitted = points.map(([x, y]) => [
-    targetCx + (x - cx) * scale,
-    targetCy - (y - cy) * scale,
-  ]);
-  return { points: fitted, scale };
+  const closureError = Math.hypot(x, y);
+  const perimeter = lengths.reduce((sum, l) => sum + l, 0);
+  const closed = closureError <= EPSILON * perimeter;
+  // A closed path's last point duplicates the start, so drop it.
+  return { ok: true, points: closed ? points.slice(0, -1) : points, closed, closureError };
 }

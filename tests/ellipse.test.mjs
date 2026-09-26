@@ -1,68 +1,77 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectCircleToEllipse, tangentPointsFromExternalPoint } from '../js/ellipse.js';
+import { projectCircle, ellipsePoint, ellipseBBox, ellipseArcBeziers } from '../js/ellipse.js';
 import { matrixOf, applyMatrix } from '../js/projections.js';
 
-function closeTo(actual, expected, eps = 1e-6) {
+const Y_AXIS = { x: 0, y: 1, z: 0 };
+
+function closeTo(actual, expected, eps = 1e-9) {
   assert.ok(Math.abs(actual - expected) <= eps, `expected ${actual} to be close to ${expected}`);
 }
 
-function ellipsePoint(e, t) {
-  const rad = (e.rotationDeg * Math.PI) / 180;
-  const lx = e.rx * Math.cos(t);
-  const ly = e.ry * Math.sin(t);
-  return [e.cx + lx * Math.cos(rad) - ly * Math.sin(rad), e.cy + lx * Math.sin(rad) + ly * Math.cos(rad)];
+function bezierPoint([p0, p1, p2, p3], s) {
+  const m = 1 - s;
+  const w = [m * m * m, 3 * m * m * s, 3 * m * s * s, s * s * s];
+  return [0, 1].map((k) => w[0] * p0[k] + w[1] * p1[k] + w[2] * p2[k] + w[3] * p3[k]);
 }
 
-test('projectCircleToEllipse: sampled 3D circle points lie exactly on the derived ellipse (cavalier)', () => {
-  const matrix = matrixOf('cavalier', { angleDeg: 45 });
-  const center = { x: 0, y: 0, z: 0 };
-  const radius = 3;
-  const axis = { x: 0, y: 1, z: 0 };
-  const ellipse = projectCircleToEllipse(matrix, center, radius, axis);
+// Distance from p to the ellipse, measured in the ellipse's own (unit-circle) coordinates.
+function unitCircleResidual(e, p) {
+  const [a, b, c, d] = [e.A[0], e.B[0], e.A[1], e.B[1]];
+  const det = a * d - b * c;
+  const dx = p[0] - e.center[0];
+  const dy = p[1] - e.center[1];
+  return Math.hypot((d * dx - b * dy) / det, (-c * dx + a * dy) / det) - 1;
+}
 
-  for (let i = 0; i < 16; i++) {
-    const t = (2 * Math.PI * i) / 16;
-    const point3d = {
-      x: radius * Math.cos(t),
-      y: 0,
-      z: radius * Math.sin(t),
-    };
-    const projected = applyMatrix(matrix, point3d);
-    // Find the closest point on the derived ellipse by scanning; since the
-    // ellipse is the exact image of the circle, some parameter must match
-    // the projected point almost exactly.
-    let best = Infinity;
-    for (let j = 0; j < 720; j++) {
-      const et = (2 * Math.PI * j) / 720;
-      const ep = ellipsePoint(ellipse, et);
-      const d = Math.hypot(ep[0] - projected[0], ep[1] - projected[1]);
-      if (d < best) best = d;
+for (const name of ['isometric', 'cavalier', 'cabinet']) {
+  test(`projectCircle (${name}): every projected 3D circle point equals the parametric ellipse point`, () => {
+    const matrix = matrixOf(name);
+    const center = { x: 1, y: 2, z: -3 };
+    const e = projectCircle(matrix, center, 5, Y_AXIS);
+    for (let i = 0; i < 24; i++) {
+      const t = (2 * Math.PI * i) / 24;
+      const p3 = {
+        x: center.x + 5 * (Math.cos(t) * e.u.x + Math.sin(t) * e.w.x),
+        y: center.y + 5 * (Math.cos(t) * e.u.y + Math.sin(t) * e.w.y),
+        z: center.z + 5 * (Math.cos(t) * e.u.z + Math.sin(t) * e.w.z),
+      };
+      assert.ok(Math.abs(p3.y - center.y) < 1e-12, 'circle must lie in the plane perpendicular to the axis');
+      const [x, y] = applyMatrix(matrix, p3);
+      const [ex, ey] = ellipsePoint(e, t);
+      closeTo(x, ex);
+      closeTo(y, ey);
     }
-    assert.ok(best < 1e-3, `projected circle point should lie on the derived ellipse (min dist ${best})`);
+  });
+}
+
+test('ellipseBBox is tight: all samples inside and the extremes are reached', () => {
+  const e = projectCircle(matrixOf('isometric'), { x: 0, y: 0, z: 0 }, 3, Y_AXIS);
+  const box = ellipseBBox(e);
+  let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (let i = 0; i < 20000; i++) {
+    const [x, y] = ellipsePoint(e, (2 * Math.PI * i) / 20000);
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  for (const [got, want] of [[minX, box.minX], [maxX, box.maxX], [minY, box.minY], [maxY, box.maxY]]) {
+    closeTo(got, want, 1e-6);
   }
 });
 
-test('projectCircleToEllipse: isometric projection of a horizontal circle keeps it centered correctly', () => {
-  const matrix = matrixOf('isometric');
-  const ellipse = projectCircleToEllipse(matrix, { x: 0, y: 5, z: 0 }, 2, { x: 0, y: 1, z: 0 });
-  const centerProjected = applyMatrix(matrix, { x: 0, y: 5, z: 0 });
-  closeTo(ellipse.cx, centerProjected[0]);
-  closeTo(ellipse.cy, centerProjected[1]);
-  assert.ok(ellipse.rx > 0 && ellipse.ry > 0);
-});
-
-test('tangentPointsFromExternalPoint: tangent lines from an external point touch the ellipse', () => {
-  const ellipse = { cx: 0, cy: 0, rx: 4, ry: 2, rotationDeg: 0 };
-  const apex = [10, 10];
-  const [t1, t2] = tangentPointsFromExternalPoint(ellipse, apex);
-  for (const [x, y] of [t1, t2]) {
-    const value = (x / ellipse.rx) ** 2 + (y / ellipse.ry) ** 2;
-    closeTo(value, 1, 1e-6);
+test('ellipseArcBeziers: curves stay on the ellipse (< 0.03% of radius) and endpoints are exact', () => {
+  const e = projectCircle(matrixOf('cabinet'), { x: 0, y: 0, z: 0 }, 10, Y_AXIS);
+  const t0 = 0.3;
+  const t1 = 0.3 + 1.7 * Math.PI;
+  const segments = ellipseArcBeziers(e, t0, t1);
+  assert.equal(segments.length, 4);
+  closeTo(segments[0][0][0], ellipsePoint(e, t0)[0]);
+  closeTo(segments.at(-1)[3][1], ellipsePoint(e, t1)[1]);
+  for (const seg of segments) {
+    for (let k = 0; k <= 20; k++) {
+      assert.ok(Math.abs(unitCircleResidual(e, bezierPoint(seg, k / 20))) < 3e-4);
+    }
   }
-});
-
-test('tangentPointsFromExternalPoint: returns null for a point inside the ellipse', () => {
-  const ellipse = { cx: 0, cy: 0, rx: 4, ry: 2, rotationDeg: 0 };
-  assert.equal(tangentPointsFromExternalPoint(ellipse, [0, 0]), null);
 });

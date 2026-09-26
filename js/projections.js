@@ -7,7 +7,7 @@
 // [[m00, m01, m02], [m10, m11, m12]] such that
 //   x2d = m00*x + m01*y + m02*z
 //   y2d = m10*x + m11*y + m12*z
-// so that ellipse.js / hidden-line.js can work generically across projections.
+// so that ellipse.js / curved-solids.js can work generically across projections.
 
 function deg2rad(deg) {
   return (deg * Math.PI) / 180;
@@ -42,40 +42,34 @@ export function projectCabinet(point, options = {}) {
   return projectOblique(point, { angleDeg: options.angleDeg ?? 45, scale: 0.5 });
 }
 
-/** The 2x3 matrix representation of a named projection (see header comment). */
-export function matrixOf(name, options = {}) {
+function obliqueParams(name, options) {
+  const angleDeg = options.angleDeg ?? 45;
   switch (name) {
-    case 'isometric': {
-      return [
-        [ISO_COS30, 0, -ISO_COS30],
-        [-0.5, 1, -0.5],
-      ];
-    }
-    case 'cavalier': {
-      const rad = deg2rad(options.angleDeg ?? 45);
-      return [
-        [1, 0, Math.cos(rad)],
-        [0, 1, Math.sin(rad)],
-      ];
-    }
-    case 'cabinet': {
-      const rad = deg2rad(options.angleDeg ?? 45);
-      return [
-        [1, 0, 0.5 * Math.cos(rad)],
-        [0, 1, 0.5 * Math.sin(rad)],
-      ];
-    }
-    case 'oblique': {
-      const rad = deg2rad(options.angleDeg ?? 45);
-      const scale = options.scale ?? 0.5;
-      return [
-        [1, 0, scale * Math.cos(rad)],
-        [0, 1, scale * Math.sin(rad)],
-      ];
-    }
+    case 'cavalier':
+      return { angleDeg, scale: 1 };
+    case 'cabinet':
+      return { angleDeg, scale: 0.5 };
+    case 'oblique':
+      return { angleDeg, scale: options.scale ?? 0.5 };
     default:
       throw new RangeError(`unknown projection: ${name}`);
   }
+}
+
+/** The 2x3 matrix representation of a named projection (see header comment). */
+export function matrixOf(name, options = {}) {
+  if (name === 'isometric') {
+    return [
+      [ISO_COS30, 0, -ISO_COS30],
+      [-0.5, 1, -0.5],
+    ];
+  }
+  const { angleDeg, scale } = obliqueParams(name, options);
+  const rad = deg2rad(angleDeg);
+  return [
+    [1, 0, scale * Math.cos(rad)],
+    [0, 1, scale * Math.sin(rad)],
+  ];
 }
 
 export function applyMatrix(matrix, point) {
@@ -86,15 +80,22 @@ export function applyMatrix(matrix, point) {
   ];
 }
 
-/** Approximate view direction (object -> camera) used for back-face culling. */
-export function viewDirectionOf(name) {
+/**
+ * Unit vector from the object toward the viewer, along the projectors: it
+ * spans the null space of the projection matrix, so every point on a line
+ * with this direction lands on the same 2D point. This makes back-face tests
+ * and curved-surface silhouettes exact, not approximate.
+ * Isometric looks from (+1, +1, +1). The oblique family keeps the x-y plane
+ * as the true-size picture plane nearest the viewer, so the viewer is on -z.
+ */
+export function viewDirectionOf(name, options = {}) {
   if (name === 'isometric') {
     const n = 1 / Math.sqrt(3);
     return { x: n, y: n, z: n };
   }
-  return { x: 0, y: 0, z: 1 };
-}
-
-export function project(name, point, options = {}) {
-  return applyMatrix(matrixOf(name, options), point);
+  const { angleDeg, scale } = obliqueParams(name, options);
+  const rad = deg2rad(angleDeg);
+  const d = { x: scale * Math.cos(rad), y: scale * Math.sin(rad), z: -1 };
+  const len = Math.hypot(d.x, d.y, d.z);
+  return { x: d.x / len, y: d.y / len, z: d.z / len };
 }

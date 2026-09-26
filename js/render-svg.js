@@ -36,12 +36,6 @@ function renderItem(item) {
       const [[x1, y1], [x2, y2]] = item.points;
       return `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" ${styleAttrs({ ...item, fill: 'none' })} />`;
     }
-    case 'ellipse': {
-      const transform = item.rotationDeg
-        ? ` transform="rotate(${item.rotationDeg.toFixed(3)} ${item.cx.toFixed(2)} ${item.cy.toFixed(2)})"`
-        : '';
-      return `<ellipse cx="${item.cx.toFixed(2)}" cy="${item.cy.toFixed(2)}" rx="${item.rx.toFixed(2)}" ry="${item.ry.toFixed(2)}" ${styleAttrs(item)}${transform} />`;
-    }
     case 'path': {
       return `<path d="${item.d}" ${styleAttrs(item)} />`;
     }
@@ -62,11 +56,4 @@ export function renderSvgString(scene) {
       : '';
   const body = items.map(renderItem).join('\n  ');
   return `<svg xmlns="${SVG_NS}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n  ${bg}\n  ${body}\n</svg>`;
-}
-
-/** Parse an SVG string into a live DOM element (browser only). */
-export function svgStringToElement(svgString) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(svgString, 'image/svg+xml');
-  return doc.documentElement;
 }

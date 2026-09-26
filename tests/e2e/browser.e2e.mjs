@@ -1,0 +1,217 @@
+// Browser end-to-end check (development only; the app itself never needs it).
+//   npm install && npm run test:e2e
+// Serves the repo with a tiny static server, drives the UI with Playwright and
+// verifies rendering, validation, PNG/SVG export and a clean console.
+// Set CHROMIUM_PATH to use an already-installed Chromium instead of
+// `npx playwright install chromium`.
+
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+
+const server = createServer(async (req, res) => {
+  const path = normalize(join(ROOT, decodeURIComponent(new URL(req.url, 'http://x').pathname)));
+  if (!path.startsWith(ROOT)) {
+    res.writeHead(403).end();
+    return;
+  }
+  try {
+    const file = (await stat(path)).isDirectory() ? join(path, 'index.html') : path;
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
+    res.end(await readFile(file));
+  } catch {
+    res.writeHead(404).end();
+  }
+});
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+const baseUrl = `http://127.0.0.1:${server.address().port}/`;
+
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
+const page = await browser.newPage({ acceptDownloads: true });
+const errors = [];
+page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on('console', (msg) => {
+  if (msg.type() === 'error' || msg.type() === 'warning') errors.push(`console.${msg.type()}: ${msg.text()}`);
+});
+
+let passed = 0;
+async function check(name, fn) {
+  await fn();
+  passed++;
+  console.log(`ok - ${name}`);
+}
+
+async function set(selector, value) {
+  await page.fill(selector, String(value));
+}
+const preview = () => page.locator('#preview').innerHTML();
+const count = async (tag) => ((await preview()).match(new RegExp(`<${tag}[ >]`, 'g')) || []).length;
+const dashed = async () => ((await preview()).match(/stroke-dasharray/g) || []).length;
+
+function pngInfo(buffer) {
+  assert.deepEqual([...buffer.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'PNG signature');
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+try {
+  await page.goto(baseUrl);
+  await page.waitForSelector('#preview svg');
+
+  await check('2D regular polygon renders by default', async () => {
+    assert.equal(await count('polygon'), 1);
+  });
+
+  await check('only the selected shape\'s inputs are visible (hidden attribute is honored)', async () => {
+    const visible = async () => ({
+      regular: await page.locator('#fieldset-regular').isVisible(),
+      triangle: await page.locator('#fieldset-triangle').isVisible(),
+      general: await page.locator('#fieldset-general').isVisible(),
+    });
+    assert.deepEqual(await visible(), { regular: true, triangle: false, general: false });
+    await page.selectOption('#shape2d-type', 'general');
+    assert.deepEqual(await visible(), { regular: false, triangle: false, general: true });
+    assert.equal(await page.locator('#png-custom-width-field').isVisible(), false);
+    await page.selectOption('#shape2d-type', 'regular');
+  });
+
+  await check('2D SSS triangle: valid, then impossible, then empty input', async () => {
+    await page.selectOption('#shape2d-type', 'triangle');
+    await set('#sss-a', 3);
+    await set('#sss-b', 4);
+    await set('#sss-c', 5);
+    assert.equal(await count('polygon'), 1);
+    assert.equal(await page.locator('#triangle-error').innerText(), '');
+    await set('#sss-c', 10);
+    assert.match(await page.locator('#triangle-error').innerText(), /成立条件/);
+    assert.equal(await count('svg'), 0);
+    assert.ok(await page.locator('#btn-save-png').isDisabled());
+    await set('#sss-c', '');
+    assert.match(await page.locator('#triangle-error').innerText(), /正の数/);
+  });
+
+  await check('2D general polygon: defaults close for 7 edges, editing opens it', async () => {
+    await page.selectOption('#shape2d-type', 'general');
+    await set('#general-count', 7);
+    assert.equal(await page.locator('#general-error').innerText(), '');
+    assert.equal(await count('polygon'), 1);
+    await page.locator('.general-length').first().fill('55');
+    assert.match(await page.locator('#general-error').innerText(), /閉じていません（閉合誤差 15\.000）/);
+    assert.equal(await count('polyline'), 1);
+  });
+
+  await page.click('.mode-btn[data-mode="3d"]');
+
+  const projections = ['isometric', 'cavalier', 'cabinet', 'oblique'];
+  for (const projection of projections) {
+    await check(`3D cube (${projection}): 12 edges, 3 dashed`, async () => {
+      await page.selectOption('#shape3d-type', 'cube');
+      await page.selectOption('#projection-type', projection);
+      await page.selectOption('#hidden-line-mode', 'dashed');
+      assert.equal(await count('line'), 12);
+      assert.equal(await dashed(), 3);
+    });
+  }
+
+  await check('3D every shape renders under every projection without errors', async () => {
+    const shapes = await page.$$eval('#shape3d-type option', (opts) => opts.map((o) => o.value));
+    for (const shape of shapes) {
+      await page.selectOption('#shape3d-type', shape);
+      for (const projection of projections) {
+        await page.selectOption('#projection-type', projection);
+        assert.ok((await preview()).includes('<svg'), `${shape}/${projection}`);
+        assert.ok(!(await preview()).includes('NaN'), `${shape}/${projection} has NaN`);
+      }
+    }
+  });
+
+  await check('3D cylinder: hidden back arc is dashed or omitted per setting', async () => {
+    await page.selectOption('#shape3d-type', 'cylinder');
+    await page.selectOption('#projection-type', 'cabinet');
+    await page.selectOption('#hidden-line-mode', 'dashed');
+    assert.equal(await count('path'), 3);
+    assert.equal(await dashed(), 1);
+    await page.selectOption('#hidden-line-mode', 'hidden');
+    assert.equal(await count('path'), 2);
+    assert.equal(await dashed(), 0);
+  });
+
+  await check('3D invalid dimensions and oblique scale are reported, nothing is drawn', async () => {
+    await page.locator('.shape3d-field').first().fill('');
+    assert.match(await page.locator('#shape3d-error').innerText(), /正の数/);
+    assert.equal(await count('svg'), 0);
+    await page.locator('.shape3d-field').first().fill('30');
+    await page.selectOption('#projection-type', 'oblique');
+    await set('#oblique-scale', 0);
+    assert.match(await page.locator('#oblique-error').innerText(), /奥行き倍率/);
+    await set('#oblique-scale', 0.5);
+    assert.equal(await count('svg'), 1);
+  });
+
+  await check('PNG download: 4x preset gives > 2000px with the reported size', async () => {
+    await page.selectOption('#shape3d-type', 'box');
+    await page.selectOption('#png-resolution', '4');
+    const info = await page.locator('#png-size-info').innerText();
+    const [, w, h] = info.match(/(\d+) × (\d+)/).map(Number);
+    assert.ok(w > 2000);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-png')]);
+    assert.equal(download.suggestedFilename(), 'shape.png');
+    const size = pngInfo(await readFile(await download.path()));
+    assert.deepEqual(size, { width: w, height: h });
+  });
+
+  await check('PNG custom width keeps the figure aspect ratio', async () => {
+    await page.selectOption('#png-resolution', 'custom');
+    await set('#png-custom-width', 2500);
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-png')]);
+    const { width, height } = pngInfo(await readFile(await download.path()));
+    const svgSize = await page.$eval('#preview svg', (s) => [Number(s.getAttribute('width')), Number(s.getAttribute('height'))]);
+    assert.equal(width, 2500);
+    assert.ok(Math.abs(height - (2500 * svgSize[1]) / svgSize[0]) <= 1);
+  });
+
+  await check('PNG background: transparent corners vs white corners, dark crisp strokes', async () => {
+    const result = await page.evaluate(async () => {
+      const { svgToPngBlob } = await import('./js/export-png.js');
+      const svg = document.querySelector('#preview svg').outerHTML;
+      const w = 3000;
+      const h = Math.round((w * document.querySelector('#preview svg').getAttribute('height')) / document.querySelector('#preview svg').getAttribute('width'));
+      const out = {};
+      for (const background of ['transparent', 'white']) {
+        const bitmap = await createImageBitmap(await svgToPngBlob(svg, { outputWidth: w, outputHeight: h, background }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bitmap, 0, 0);
+        const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        let dark = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 200 && data[i] < 60) dark++;
+        out[background] = { corner: [...ctx.getImageData(0, 0, 1, 1).data], dark };
+      }
+      return out;
+    });
+    assert.equal(result.transparent.corner[3], 0, 'transparent background');
+    assert.deepEqual(result.white.corner, [255, 255, 255, 255], 'white background');
+    // Strokes scale with the output (2px at 800 => ~7.5px at 3000), so many solid dark pixels exist.
+    assert.ok(result.transparent.dark > 20000, `dark pixels: ${result.transparent.dark}`);
+  });
+
+  await check('SVG download', async () => {
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-svg')]);
+    assert.equal(download.suggestedFilename(), 'shape.svg');
+    assert.match(await readFile(await download.path(), 'utf8'), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  });
+
+  await check('no console errors or warnings during the whole session', async () => {
+    assert.deepEqual(errors, []);
+  });
+
+  console.log(`\n${passed} browser checks passed`);
+} finally {
+  await browser.close();
+  server.close();
+}

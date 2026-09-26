@@ -1,7 +1,7 @@
 // Pure 3D shape data generation. No DOM / SVG / projection dependencies.
-// Convention: X = width (right), Y = height (up), Z = depth (toward viewer).
-// Polyhedron faces are listed with outward-facing winding (counter-clockwise
-// when viewed from outside), used later for hidden-line back-face detection.
+// Convention: X = width, Y = height (up), Z = depth. Solids rest on y = 0.
+// Polyhedron faces are wound counter-clockwise when viewed from outside, so
+// the cross product (v1 - v0) x (v2 - v0) is the outward normal.
 
 function v(x, y, z) {
   return { x, y, z };
@@ -16,47 +16,49 @@ export function box({ width, height, depth }) {
     v(-hw, height, -hd), v(hw, height, -hd), v(hw, height, hd), v(-hw, height, hd), // top 4-7
   ];
   const faces = [
-    [0, 1, 2, 3], // bottom (outward normal -Y)
-    [7, 6, 5, 4], // top (outward normal +Y)
-    [0, 4, 5, 1], // front (-Z)
-    [1, 5, 6, 2], // right (+X)
-    [2, 6, 7, 3], // back (+Z)
-    [3, 7, 4, 0], // left (-X)
+    [0, 1, 2, 3], // bottom (-Y)
+    [7, 6, 5, 4], // top (+Y)
+    [0, 4, 5, 1], // -Z
+    [1, 5, 6, 2], // +X
+    [2, 6, 7, 3], // +Z
+    [3, 7, 4, 0], // -X
   ];
-  const edges = facesToEdges(faces);
-  return { vertices, edges, faces };
+  return { vertices, edges: facesToEdges(faces), faces };
 }
 
 export function cube({ size }) {
   return box({ width: size, height: size, depth: size });
 }
 
+// Regular n-gon in the x-z plane with one edge facing -Z (the front in
+// oblique drawings), so e.g. a square base is axis-aligned, not a diamond.
+function regularBase(sides, radius, y) {
+  const start = -Math.PI / 2 - Math.PI / sides;
+  const points = [];
+  for (let i = 0; i < sides; i++) {
+    const angle = start + (2 * Math.PI * i) / sides;
+    points.push(v(radius * Math.cos(angle), y, radius * Math.sin(angle)));
+  }
+  return points;
+}
+
 /** Prism with a regular n-gon base (n=3 triangular, n=4 quadrangular, ...). */
 export function prism({ sides, radius, height }) {
-  const bottom = [];
-  const top = [];
-  for (let i = 0; i < sides; i++) {
-    const angle = (2 * Math.PI * i) / sides - Math.PI / 2;
-    const x = radius * Math.cos(angle);
-    const z = radius * Math.sin(angle);
-    bottom.push(v(x, 0, z));
-    top.push(v(x, height, z));
-  }
-  const vertices = [...bottom, ...top];
-  const faces = [];
-  faces.push([...Array(sides).keys()].reverse()); // bottom, outward normal -Y
-  faces.push([...Array(sides).keys()].map((i) => i + sides)); // top, outward normal +Y
+  const vertices = [...regularBase(sides, radius, 0), ...regularBase(sides, radius, height)];
+  const indices = [...Array(sides).keys()];
+  const faces = [
+    indices, // bottom: increasing angle in x-z is clockwise seen from +Y, so this faces -Y
+    indices.map((i) => i + sides).reverse(), // top
+  ];
   for (let i = 0; i < sides; i++) {
     const ni = (i + 1) % sides;
-    faces.push([i, ni, ni + sides, i + sides]); // side quad, outward
+    faces.push([i, i + sides, ni + sides, ni]);
   }
-  const edges = facesToEdges(faces);
-  return { vertices, edges, faces };
+  return { vertices, edges: facesToEdges(faces), faces };
 }
 
 export function triangularPrism({ sideLength, height }) {
-  const radius = sideLength / (2 * Math.sin(Math.PI / 3));
-  return prism({ sides: 3, radius, height });
+  return prism({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
 }
 
 export function quadrangularPrism({ width, depth, height }) {
@@ -65,38 +67,26 @@ export function quadrangularPrism({ width, depth, height }) {
 
 /** Pyramid with a regular n-gon base and apex above the centroid. */
 export function pyramid({ sides, radius, height }) {
-  const base = [];
+  const vertices = [...regularBase(sides, radius, 0), v(0, height, 0)];
+  const apex = sides;
+  const faces = [[...Array(sides).keys()]];
   for (let i = 0; i < sides; i++) {
-    const angle = (2 * Math.PI * i) / sides - Math.PI / 2;
-    base.push(v(radius * Math.cos(angle), 0, radius * Math.sin(angle)));
+    faces.push([i, apex, (i + 1) % sides]);
   }
-  const apex = v(0, height, 0);
-  const vertices = [...base, apex];
-  const apexIndex = sides;
-  const faces = [];
-  faces.push([...Array(sides).keys()].reverse()); // base, outward normal -Y
-  for (let i = 0; i < sides; i++) {
-    const ni = (i + 1) % sides;
-    faces.push([i, ni, apexIndex]);
-  }
-  const edges = facesToEdges(faces);
-  return { vertices, edges, faces };
+  return { vertices, edges: facesToEdges(faces), faces };
 }
 
 export function triangularPyramid({ sideLength, height }) {
-  const radius = sideLength / (2 * Math.sin(Math.PI / 3));
-  return pyramid({ sides: 3, radius, height });
+  return pyramid({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
 }
 
 export function quadrangularPyramid({ baseWidth, height }) {
-  const radius = (baseWidth * Math.SQRT2) / 2;
-  return pyramid({ sides: 4, radius, height });
+  return pyramid({ sides: 4, radius: baseWidth / Math.SQRT2, height });
 }
 
 /**
- * Cylinder represented analytically (not polygon-approximated): a bottom
- * circle, a top circle, and the connecting axis. render-svg + ellipse.js
- * project this directly into an ellipse pair with tangent silhouette lines.
+ * Cylinder kept analytic (not polygon-approximated); curved-solids.js turns
+ * it into exact projected ellipses plus silhouette generator lines.
  */
 export function cylinder({ radius, height }) {
   return {
@@ -109,7 +99,6 @@ export function cylinder({ radius, height }) {
   };
 }
 
-/** Cone represented analytically: a base circle plus an apex point. */
 export function cone({ radius, height }) {
   return {
     kind: 'cone',
@@ -125,7 +114,7 @@ function edgeKey(a, b) {
   return a < b ? `${a}_${b}` : `${b}_${a}`;
 }
 
-/** Derive a deduplicated edge list, each annotated with its owning faces. */
+/** Deduplicated edge list, each edge annotated with the faces that own it. */
 export function facesToEdges(faces) {
   const map = new Map();
   faces.forEach((face, faceIndex) => {

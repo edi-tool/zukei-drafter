@@ -5,7 +5,11 @@
   "description": "2D/3D shape PNG generator for teaching materials (static site, no build step required).",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node tests/e2e/browser.e2e.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
 }
