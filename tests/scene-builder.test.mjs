@@ -99,3 +99,10 @@ test('buildScene3D: cone = visible/hidden base arcs + 2 generators; "hidden" mod
   assert.equal(hidden.items.filter((it) => it.type === 'path').length, 1);
   assertInsideWithMargin(dashed);
 });
+
+test('buildScene2D: right-angle marks on a figure without a 90° corner draw nothing and do not throw', () => {
+  const { points } = regularPolygon({ sides: 6, sideLength: 40 });
+  const plain = buildScene2D(points, true, {}, null);
+  const auto = buildScene2D(points, true, {}, { rightAngles: 'auto' });
+  assert.deepEqual(auto, plain);
+});
