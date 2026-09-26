@@ -28,6 +28,10 @@ let current = null; // { svg, width, height } of the last successful render
 let defaults = {}; // form state at page load, so the URL only carries changes
 let restoring = true; // suppress URL writes until the initial state is applied
 
+// Form controls live in the settings panel and in the export bar under the preview.
+const formRoots = () => [$('panel'), $('export-bar')];
+const inForm = (el) => formRoots().some((root) => root.contains(el));
+
 // Small line icons for the shape chips (24x24, stroke = currentColor).
 const ICONS = {
   regular: '<polygon points="12,2.5 20.5,7.3 20.5,16.7 12,21.5 3.5,16.7 3.5,7.3" />',
@@ -103,7 +107,7 @@ function applyTrianglePreset(name) {
 // Highlight empty / out-of-range numbers. Native :invalid is not used because it
 // also flags harmless step mismatches (e.g. 40 against min=0.01 step=0.1).
 function markInvalidFields() {
-  for (const el of document.querySelectorAll('#panel input[type="number"]')) {
+  for (const el of document.querySelectorAll('#panel input[type="number"], #export-bar input[type="number"]')) {
     const v = el.validity;
     const bad = v.valueMissing || v.badInput || v.rangeUnderflow || v.rangeOverflow;
     if (bad) el.setAttribute('aria-invalid', 'true');
@@ -134,6 +138,63 @@ function syncSliders() {
   for (const range of document.querySelectorAll('.slider-pair .slider')) {
     const value = readNumber(range.nextElementSibling);
     if (Number.isFinite(value)) range.value = value;
+  }
+}
+
+// ---------- steppers ----------
+
+// Native number spinners are tiny (or missing) on touch screens, so every free
+// number field without a slider gets large −/+ buttons. Holding a button repeats.
+const STEPPER_SKIP = new Set(['png-custom-width']);
+
+function nudge(input, direction) {
+  const step = Number(input.dataset.nudge || (Number(input.step) >= 1 ? input.step : 1));
+  const current = readNumber(input);
+  let value = (Number.isFinite(current) ? current : 0) + direction * step;
+  if (input.min !== '') value = Math.max(Number(input.min), value);
+  if (input.max !== '') value = Math.min(Number(input.max), value);
+  input.value = String(Number(value.toFixed(6)));
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function addStepper(input) {
+  if (input.closest('.stepper, .slider-pair') || STEPPER_SKIP.has(input.id)) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'stepper';
+  const name = input.closest('.field')?.querySelector('span')?.textContent ?? '値';
+  const button = (direction) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'stepper-btn';
+    b.textContent = direction > 0 ? '+' : '−';
+    b.setAttribute('aria-label', `${name}を${direction > 0 ? '増やす' : '減らす'}`);
+    b.tabIndex = -1; // keyboard users have the arrow keys in the number field itself
+    let timer = 0;
+    const stop = () => clearTimeout(timer);
+    const repeat = (delay) => {
+      nudge(input, direction);
+      timer = setTimeout(() => repeat(70), delay);
+    };
+    b.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || input.readOnly) return;
+      event.preventDefault(); // keep focus (and the on-screen keyboard) where it was
+      repeat(450);
+    });
+    for (const type of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(type, stop);
+    b.addEventListener('contextmenu', (event) => event.preventDefault()); // long press = repeat, not a menu
+    // Screen-reader activation arrives as a click with detail 0 (no pointer events).
+    b.addEventListener('click', (event) => {
+      if (event.detail === 0 && !input.readOnly) nudge(input, direction);
+    });
+    return b;
+  };
+  input.before(wrap);
+  wrap.append(button(-1), input, button(1));
+}
+
+function buildSteppers(root = document) {
+  for (const input of root.querySelectorAll('input[type="number"]:not([data-slider])')) {
+    if (input.closest('#panel .field')) addStepper(input);
   }
 }
 
@@ -198,7 +259,7 @@ function toast(message, isError = false) {
 
 function collectState() {
   const state = { mode };
-  for (const el of $('panel').querySelectorAll('input[id], select[id]')) {
+  for (const el of formRoots().flatMap((root) => [...root.querySelectorAll('input[id], select[id]')])) {
     state[el.id] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
   }
   document.querySelectorAll('.general-length').forEach((el, i) => (state[`gl${i}`] = el.value));
@@ -218,7 +279,7 @@ function applyState(state) {
   buildShape3DFields();
   for (const [key, value] of Object.entries(state)) {
     const el = document.getElementById(key);
-    if (el && $('panel').contains(el) && el.matches('input, select')) setValue(el, value);
+    if (el && inForm(el) && el.matches('input, select')) setValue(el, value);
   }
   const lengths = document.querySelectorAll('.general-length');
   const headings = document.querySelectorAll('.general-heading');
@@ -451,6 +512,7 @@ function buildShape3DFields() {
     label.innerHTML = `<span>${field.label}</span><input type="number" required class="shape3d-field" data-key="${field.id}" min="0.01" step="0.5" value="${field.value}" />`;
     container.appendChild(label);
   }
+  buildSteppers(container);
 }
 
 function compute3DShape() {
@@ -581,13 +643,26 @@ function wireEvents() {
   $('shape3d-type').addEventListener('input', buildShape3DFields);
 
   // One delegated handler: any form change re-syncs visibility and re-renders.
-  $('panel').addEventListener('input', () => {
-    syncVisibility();
-    render();
-  });
+  for (const root of formRoots()) {
+    root.addEventListener('input', () => {
+      syncVisibility();
+      render();
+    });
+    root.addEventListener('keydown', onChipKeydown);
+  }
 
   document.querySelectorAll('.chips').forEach(buildChips);
-  $('panel').addEventListener('keydown', onChipKeydown);
+
+  // Phones: jump past the settings to the save buttons (a #fragment link would clobber the URL state).
+  $('btn-jump-save').addEventListener('click', () => $('export-bar').scrollIntoView({ behavior: 'smooth' }));
+
+  // Ctrl/Cmd+S saves the PNG instead of the page.
+  document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      if (!$('btn-save-png').disabled) $('btn-save-png').click();
+    }
+  });
   document.querySelectorAll('.preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => applyTrianglePreset(btn.dataset.preset));
   });
@@ -661,6 +736,7 @@ function wireEvents() {
 buildGeneralEdgeInputs();
 buildShape3DFields();
 buildSliders();
+buildSteppers();
 wireEvents();
 defaults = collectState();
 const initial = decodeState(location.hash);

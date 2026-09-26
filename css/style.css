@@ -72,7 +72,8 @@ body {
   white-space: nowrap;
   border: none;
   background: transparent;
-  padding: 8px 18px;
+  min-height: 40px;
+  padding: 8px 20px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.95rem;
@@ -84,15 +85,28 @@ body {
 }
 
 .app-main {
-  display: flex;
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
-  align-items: flex-start;
+  align-items: start;
+}
+
+/* Both columns stay in view while the page scrolls; the panel scrolls inside. */
+.panel,
+.stage {
+  position: sticky;
+  top: 16px;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 .panel {
-  width: 340px;
-  flex: 0 0 340px;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -100,8 +114,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 32px);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .shape-fieldset {
@@ -129,22 +144,49 @@ body {
 
 .field input,
 .field select {
-  padding: 6px 8px;
+  min-height: 40px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 1rem;
+  /* 16px keeps iOS Safari from zooming in when a field gets focus. */
+  font-size: 16px;
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
+.field input:focus,
+.edge-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(242, 140, 6, 0.2);
 }
 
 .field input[type="color"] {
-  padding: 2px;
-  height: 34px;
+  width: 64px;
+  height: 40px;
+  padding: 3px;
+  cursor: pointer;
 }
 
 .check-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: 6px;
   font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.check-field input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent-dark);
+  cursor: pointer;
 }
 
 #ann-options {
@@ -161,44 +203,52 @@ body {
   font-size: 0.85rem;
 }
 
-/* Keep the save buttons in view while the rest of the panel scrolls. */
-.export-fieldset {
-  position: sticky;
-  bottom: -16px;
-  background: var(--panel-bg);
-  box-shadow: 0 -8px 12px -8px rgba(0, 0, 0, 0.15);
-}
-
+/* Messages take no room until there is something to say. */
 .error-message {
   color: var(--error);
   font-size: 0.85rem;
-  min-height: 1.2em;
+  font-weight: 600;
   margin: 0;
+}
+
+.error-message:empty {
+  display: none;
 }
 
 .button-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .button-row button {
-  flex: 1;
-  padding: 10px 12px;
-  border: none;
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 10px 16px;
   border-radius: 8px;
-  background: var(--accent-dark);
-  color: #fff;
   font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.button-row button:hover {
+.primary-btn {
+  border: 1px solid var(--accent-dark);
+  background: var(--accent-dark);
+  color: #fff;
+}
+
+.button-row .primary-btn {
+  flex-grow: 2;
+}
+
+.primary-btn:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
-.preview-area {
-  flex: 1 1 auto;
-  min-width: 0;
+.primary-btn:disabled {
+  border-color: #9aa7bd;
+  background: #9aa7bd;
+  cursor: not-allowed;
 }
 
 .preview-surface {
@@ -206,7 +256,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   width: 100%;
-  min-height: 600px;
+  height: max(320px, calc(100vh - 310px));
   padding: 16px;
   display: flex;
   align-items: center;
@@ -216,35 +266,95 @@ body {
 .preview-surface svg {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 140px);
+  max-height: 100%;
   width: auto;
   height: auto;
   background: transparent;
 }
 
+.preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.jump-save {
+  display: none;
+}
+
+/* ---------- export bar (under the preview) ---------- */
+
+.export-bar {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 24px;
+}
+
+.export-options #png-custom-width-field input {
+  width: 120px;
+}
+
 @media (max-width: 860px) {
   .app-main {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 0;
   }
   .panel {
-    width: 100%;
-    flex: none;
+    position: static;
     max-height: none;
   }
-  .export-fieldset {
-    position: static;
-    box-shadow: none;
+  /* The preview, panel and export bar become rows of one column. */
+  .stage {
+    display: contents;
   }
-  .preview-surface {
-    min-height: 320px;
-  }
-  /* Show the figure first on narrow screens; the form follows. */
+  /* Keep the figure in view while scrolling through the settings. */
   .preview-area {
     order: -1;
-    width: 100%;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: 0 -16px;
+    padding: 8px 16px 4px;
+    background: var(--bg);
+    box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.18);
   }
-  .preview-surface svg {
-    max-height: 55vh;
+  .preview-surface {
+    height: 32vh;
+    min-height: 180px;
+    padding: 8px;
+  }
+  .preview-bar {
+    justify-content: space-between;
+    margin-top: 2px;
+  }
+  .jump-save {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 4px;
+    border: none;
+    background: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+  .export-bar {
+    order: 1;
+    scroll-margin-top: calc(32vh + 60px);
   }
   .app-header {
     padding: 10px 16px;
@@ -253,7 +363,7 @@ body {
     font-size: 1rem;
   }
   .mode-btn {
-    padding: 8px 12px;
+    padding: 8px 16px;
   }
 }
 
@@ -263,10 +373,6 @@ body {
   color: var(--text-sub);
 }
 
-.button-row button:disabled {
-  background: #9aa7bd;
-  cursor: not-allowed;
-}
 
 /* ---------- chip pickers (visual replacement for the hidden <select>s) ---------- */
 
@@ -279,13 +385,15 @@ body {
 .chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 6px 10px;
+  min-height: 40px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel-bg);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 
@@ -296,6 +404,8 @@ body {
 
 .chips-icons .chip {
   flex-direction: column;
+  gap: 4px;
+  min-height: 64px;
   border-radius: 8px;
   padding: 8px 4px 6px;
   font-size: 0.8rem;
@@ -312,6 +422,22 @@ body {
 
 .chip:hover {
   border-color: var(--accent);
+}
+
+.chip:active,
+.preset-btn:active,
+.ghost-btn:active,
+.stepper-btn:active,
+.button-row button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Remove the double-tap-zoom delay on touch controls. */
+button,
+input,
+select,
+.check-field {
+  touch-action: manipulation;
 }
 
 .chip[aria-checked="true"] {
@@ -337,7 +463,8 @@ body {
 }
 
 .preset-btn {
-  padding: 5px 10px;
+  min-height: 36px;
+  padding: 5px 12px;
   border: 1px dashed var(--accent);
   border-radius: 6px;
   background: transparent;
@@ -364,7 +491,8 @@ body {
 }
 
 .ghost-btn {
-  padding: 7px 12px;
+  min-height: 40px;
+  padding: 7px 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--panel-bg);
@@ -479,16 +607,101 @@ body {
 
 .slider-pair {
   display: grid;
-  grid-template-columns: 1fr 92px;
-  gap: 10px;
+  grid-template-columns: 1fr 96px;
+  gap: 12px;
   align-items: center;
 }
 
+/* A tall hit area and a large thumb so the slider is easy to grab by finger. */
 .slider-pair input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
-  accent-color: var(--accent);
+  height: 40px;
+  margin: 0;
   padding: 0;
   border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider-pair input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.slider-pair input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.slider-pair input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.slider-pair input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--accent-dark);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.slider-pair input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--accent-dark);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- −/+ steppers ---------- */
+
+.stepper {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 6px;
+}
+
+.stepper input {
+  text-align: center;
+  min-width: 0;
+}
+
+.stepper-btn {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.stepper-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ---------- line & fill colours ---------- */
+
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 20px;
 }
 
 /* ---------- triangle helper ---------- */
@@ -554,14 +767,25 @@ body {
 .edge-row input {
   width: 100%;
   min-width: 0;
-  padding: 5px 6px;
+  min-height: 38px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 0.95rem;
+  font-size: 16px;
 }
 
 #general-edges {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Space out the stacked fields inside each section. */
+.mode-panel,
+#shape3d-params,
+#oblique-params,
+.triangle-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
