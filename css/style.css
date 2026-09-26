@@ -117,6 +117,19 @@ body {
   height: 34px;
 }
 
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+#ann-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .edge-row {
   display: grid;
   grid-template-columns: auto 1fr 1fr;

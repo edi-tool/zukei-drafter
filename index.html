@@ -78,6 +78,30 @@
         <div id="general-edges"></div>
         <p class="error-message" id="general-error"></p>
       </fieldset>
+
+      <fieldset id="fieldset-annotations" class="shape-fieldset">
+        <legend>寸法・注釈</legend>
+        <label class="check-field"><input type="checkbox" id="ann-vertex-names" /> 頂点名（A, B, C…）</label>
+        <label class="check-field"><input type="checkbox" id="ann-lengths" /> 辺の長さ</label>
+        <label class="check-field"><input type="checkbox" id="ann-angles" /> 角度（内角）</label>
+        <div id="ann-options" hidden>
+          <label class="field" id="ann-length-style-field"><span>長さの表示</span>
+            <select id="ann-length-style">
+              <option value="label">数値のみ</option>
+              <option value="dimension">寸法線</option>
+            </select>
+          </label>
+          <label class="field" id="ann-unit-field"><span>長さの単位（例: cm、空欄可）</span>
+            <input type="text" id="ann-unit" maxlength="8" value="" />
+          </label>
+          <label class="field"><span>小数点以下の桁数 (0〜4)</span>
+            <input type="number" id="ann-decimals" min="0" max="4" step="1" value="1" />
+          </label>
+          <label class="field"><span>文字サイズ (px、長辺800基準)</span>
+            <input type="number" id="ann-font-size" min="6" max="72" step="1" value="18" />
+          </label>
+        </div>
+      </fieldset>
     </div>
 
     <!-- 3D panel -->

@@ -10,6 +10,14 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+function escapeText(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// System fonts only: an external web font would not load inside an SVG drawn
+// as an <img> (and could taint the canvas), so PNG export relies on local fonts.
+export const FONT_FAMILY = "Helvetica, Arial, 'Hiragino Sans', 'Yu Gothic', Meiryo, 'Noto Sans CJK JP', sans-serif";
+
 function styleAttrs({ stroke = '#111111', strokeWidth = 2, fill = 'none', dash = false }) {
   const attrs = [
     `stroke="${escapeAttr(stroke)}"`,
@@ -38,6 +46,10 @@ function renderItem(item) {
     }
     case 'path': {
       return `<path d="${item.d}" ${styleAttrs(item)} />`;
+    }
+    case 'text': {
+      // (x, y) is the baseline anchor; text-anchor centers it horizontally.
+      return `<text x="${item.x.toFixed(2)}" y="${item.y.toFixed(2)}" font-family="${escapeAttr(item.fontFamily ?? FONT_FAMILY)}" font-size="${item.fontSize}" fill="${escapeAttr(item.fill ?? '#111111')}" text-anchor="middle">${escapeText(item.text)}</text>`;
     }
     default:
       throw new RangeError(`unknown scene item type: ${item.type}`);

@@ -11,6 +11,7 @@ import { matrixOf, applyMatrix, viewDirectionOf } from './projections.js';
 import { classifyEdges } from './hidden-line.js';
 import { ellipseBBox, ellipseArcBeziers, ellipsePoint } from './ellipse.js';
 import { cylinderOutline, coneOutline } from './curved-solids.js';
+import { annotate2D, hasAnnotations } from './annotations.js';
 
 const DEFAULT_SIZE = 800;
 
@@ -26,17 +27,27 @@ const DEFAULT_STYLE = {
 /**
  * Affine map from logical coordinates (y up) to SVG coordinates (y down).
  * Because it is affine, Bezier control points can be mapped through it too.
+ *
+ * `pad` reserves extra px on each side (beyond `margin`) for things drawn at a
+ * fixed px size around the figure, such as annotation labels. The figure is
+ * scaled so that the padded figure's longer side is `size - 2 * margin`; with
+ * no padding this is the plain "longer side = size - 2 * margin" rule.
  */
-export function computeFit(bbox, size, margin) {
+export function computeFit(bbox, size, margin, pad = {}) {
+  const { left = 0, right = 0, top = 0, bottom = 0 } = pad;
   const spanX = bbox.maxX - bbox.minX;
   const spanY = bbox.maxY - bbox.minY;
-  const longest = Math.max(spanX, spanY) || 1;
-  const scale = (size - 2 * margin) / longest;
-  const width = Math.round(spanX * scale + 2 * margin);
-  const height = Math.round(spanY * scale + 2 * margin);
+  const target = size - 2 * margin;
+  // Never let huge padding shrink the figure to nothing.
+  const room = (padSum) => Math.max(target * 0.2, target - padSum);
+  const byX = spanX > 0 ? room(left + right) / spanX : Infinity;
+  const byY = spanY > 0 ? room(top + bottom) / spanY : Infinity;
+  const scale = Number.isFinite(Math.min(byX, byY)) ? Math.min(byX, byY) : target;
+  const width = Math.round(spanX * scale + 2 * margin + left + right);
+  const height = Math.round(spanY * scale + 2 * margin + top + bottom);
   // Center inside the rounded canvas so rounding never clips the margin.
-  const offsetX = (width - spanX * scale) / 2;
-  const offsetY = (height - spanY * scale) / 2;
+  const offsetX = left + (width - left - right - spanX * scale) / 2;
+  const offsetY = top + (height - top - bottom - spanY * scale) / 2;
   const map = ([x, y]) => [offsetX + (x - bbox.minX) * scale, offsetY + (bbox.maxY - y) * scale];
   return { width, height, scale, map };
 }
@@ -97,15 +108,48 @@ function scene(fit, s, items) {
   return { width: fit.width, height: fit.height, background: s.background ?? 'none', items, meta: { scale: fit.scale } };
 }
 
-/** Scene for a flat 2D shape; an open (non-closing) path is drawn as a polyline. */
-export function buildScene2D(points, closed, style = {}) {
-  const s = { ...DEFAULT_STYLE, ...style };
-  const fit = computeFit(bboxOfPoints(points), s.size, s.margin);
-  const mapped = points.map(fit.map);
-  const item = closed
+function shapeItem2D(mapped, closed, s) {
+  return closed
     ? { type: 'polygon', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth, fill: s.fill }
     : { type: 'polyline', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth };
-  return scene(fit, s, [item]);
+}
+
+/**
+ * Scene for a flat 2D shape; an open (non-closing) path is drawn as a polyline.
+ * With `annotation` options (see annotations.js) labels / dimension lines are
+ * drawn above the shape and the fit reserves room for them; without any
+ * annotation enabled the output is exactly the plain figure.
+ */
+export function buildScene2D(points, closed, style = {}, annotation = null) {
+  const s = { ...DEFAULT_STYLE, ...style };
+  const bbox = bboxOfPoints(points);
+  if (!hasAnnotations(annotation)) {
+    const fit = computeFit(bbox, s.size, s.margin);
+    return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s)]);
+  }
+
+  // Labels have a fixed px size, so how far they stick out beyond the figure
+  // barely depends on the scale: a few rounds of "fit, lay out, measure the
+  // overhang, pad by it" settle. Padding only grows, so this terminates.
+  const options = { ...annotation, color: s.stroke, strokeWidth: s.strokeWidth };
+  let pad = { left: 0, right: 0, top: 0, bottom: 0 };
+  let fit;
+  let ann;
+  for (let round = 0; round < 8; round++) {
+    fit = computeFit(bbox, s.size, s.margin, pad);
+    ann = annotate2D(points, closed, fit.map, options);
+    const [x0, y0] = fit.map([bbox.minX, bbox.maxY]);
+    const [x1, y1] = fit.map([bbox.maxX, bbox.minY]);
+    const need = {
+      left: Math.max(0, x0 - ann.bounds.minX),
+      right: Math.max(0, ann.bounds.maxX - x1),
+      top: Math.max(0, y0 - ann.bounds.minY),
+      bottom: Math.max(0, ann.bounds.maxY - y1),
+    };
+    if (Object.keys(need).every((k) => need[k] <= pad[k] + 0.01)) break;
+    for (const k of Object.keys(pad)) pad[k] = Math.max(pad[k], Math.ceil(need[k]));
+  }
+  return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s), ...ann.items]);
 }
 
 const SHAPE_FACTORIES = {

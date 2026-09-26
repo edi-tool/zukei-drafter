@@ -15,6 +15,7 @@ js/projections.js      3D→2D投影（線形写像）と、その正確な投�
 js/hidden-line.js      多面体の可視/不可視エッジ判定
 js/ellipse.js          円の投影＝パラメトリック楕円（点・外接矩形・Bézier弧）
 js/curved-solids.js    円柱・円錐の輪郭線（母線）と縁の可視/不可視弧
+js/annotations.js      2D の注釈（頂点名・辺の長さ/寸法線・内角）の値計算と配置
 js/scene-builder.js    上記を組み合わせ、描画用の平面データ（scene）を作る
 js/render-svg.js       scene → SVG文字列
 js/export-png.js       SVG → Canvas → PNG、SVG保存（ブラウザ専用）
@@ -32,7 +33,7 @@ tests/e2e/             Playwrightによるブラウザテスト（開発時の�
                                         |
                                         v
                          [scene-builder] 平面データ scene
-                         { width, height, items: [polygon|polyline|line|path] }
+                         { width, height, items: [polygon|polyline|line|path|text] }
                                         |
                                         v
                          [render-svg] --> SVG文字列 --> プレビュー
@@ -111,11 +112,41 @@ Bézier制御点にもそのまま適用できる）。
 * 新しい投影は `matrixOf` と `viewDirectionOf` に、新しい立体は
   `geometry3d.js` と scene-builder の `SHAPE_FACTORIES` に追加する。
 
-## 将来拡張（v1では未実装だが構造上考慮済み）
+## 寸法・注釈（2D）
 
-* 寸法線・角度ラベル・頂点名: 論理座標の頂点列と、論理座標→SVG座標の
-  写像（`computeFit(...).map`）がどちらも得られるため、scene に
-  `text` 等の item を追加し render-svg で描画するだけで対応できる。
+`annotations.js` の `annotate2D(points, closed, map, options)` が、頂点名・
+辺の長さ（ラベル／寸法線）・内角（弧＋値）を scene item
+（`line` / `polygon`（矢印）/ `path`（弧、SVG の `A` コマンド）/ `text`）として返す。
+
+* **値は論理座標、配置は SVG 座標**。長さは論理座標の頂点から求め、配置は
+  `computeFit(...).map` で写した点の上で行う。写像は一様スケール＋Y反転なので
+  角度・長さの比は保たれ、余白・矢印・文字サイズは図の縮尺によらず px で一定になる。
+* **内角**: 頂点ごとに隣接頂点への単位ベクトル e1, e2 と、面積の符号（向き）から
+  凸/凹を判定し、内角（凹頂点では 180° 超）と内側の二等分線を求める
+  （`vertexAngles`）。時計回り・反時計回りどちらの頂点列でも同じ値になる。
+  開いた折れ線は両端に角がなく、向きは始点と終点を結んだ多角形で判定する。
+* **ラベル配置**: 頂点名は外角の二等分線方向、辺の長さは辺の外向き法線方向
+  （寸法線があればその外側）、角度は内角の二等分線方向に置く。開始位置は
+  文字枠の支持関数から解析的に求め（`placeInWedge`: 2本の辺からも間隔を空ける）、
+  そこから方向に沿って 1px ずつ進め、図の辺・注釈の線・既に置いたラベルと
+  重ならない最初の位置を採用する。角度ラベルは図の内側に留め（外に出ると別の
+  角の値に見える）、入らないときは頂点の外側に置く。配置順は
+  「角度 → 頂点名 → 辺の長さ」（点に結び付くものを優先）。
+* **文字幅の見積もり**: DOM で計測せず、文字ごとの概算幅（数字 0.56em、
+  大文字 0.74em、全角 1em など、やや大きめ）で決める。Node で決定的に
+  テストでき、e2e で実際の `getBBox()` 幅が見積もり以内であることを確認する。
+* **自動フィットとの連携**: `computeFit(bbox, size, margin, pad)` に辺ごとの
+  追加余白 `pad`（px）を加えた。`buildScene2D` は「フィット → 配置 → はみ出し量を
+  測る → pad を増やす」を収束するまで繰り返す（ラベルは px 固定なので
+  はみ出し量はほぼ縮尺に依存せず、数回で収束する）。pad なしなら従来と同じ式。
+  注釈がすべてオフのときは従来とまったく同じ scene を返す（テストで検証）。
+* **文字の描画**: `render-svg` の `text` は `text-anchor="middle"` と
+  ベースライン座標で描き、`dominant-baseline` には頼らない（SVG を画像として
+  描くときの互換性のため）。`font-family` はシステムフォントのみ
+  （`FONT_FAMILY`）。外部 Web フォントは `<img>` 経由の SVG では読み込まれず、
+  Canvas を taint しうるため使わない。
+* 3D は未対応。可視の辺にだけ付ける場合は `classifyEdges` の結果と、
+  投影後の外向き方向（凸包の外側）を使う想定。
 
 ## テスト方針
 
