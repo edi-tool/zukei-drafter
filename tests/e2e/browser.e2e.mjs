@@ -421,6 +421,35 @@ try {
     assert.ok(types.includes('image/png'), `clipboard types: ${types}`);
   });
 
+  await check('input aids: slider drives the number, triangle readout, auto-close last edge', async () => {
+    await page.click('.mode-btn[data-mode="2d"]');
+    await choose('shape2d-type', 'regular');
+    const slider = page.locator('#regular-sides').locator('xpath=preceding-sibling::input[@type="range"]');
+    await slider.fill('8');
+    assert.equal(await page.inputValue('#regular-sides'), '8');
+    assert.match(await page.locator('#preview-caption').innerText(), /正8角形/);
+    await set('#regular-sides', 5);
+    assert.equal(await slider.inputValue(), '5', 'typing moves the slider');
+
+    await choose('shape2d-type', 'triangle');
+    await page.click('.preset-btn[data-preset="right345"]');
+    assert.match(await page.locator('#triangle-measures').innerText(), /BC = 50.*A = 90°/);
+    await choose('triangle-method', 'asa');
+    assert.equal(await page.locator('#triangle-diagram path.given').count(), 2, 'ASA highlights two angles');
+
+    await choose('shape2d-type', 'general');
+    await set('#general-count', 4);
+    await page.locator('.general-length').nth(1).fill('25');
+    assert.match(await page.locator('#general-error').innerText(), /閉じていません/);
+    await page.check('#general-autoclose');
+    assert.equal(await page.locator('#general-error').innerText(), '');
+    assert.equal(await count('polygon'), 1);
+    assert.equal(await page.locator('.general-length').last().getAttribute('readonly'), '');
+    await page.uncheck('#general-autoclose');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#btn-reset');
+  });
+
   await check('no console errors or warnings during the whole session', async () => {
     assert.deepEqual(errors, []);
   });

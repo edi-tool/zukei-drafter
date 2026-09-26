@@ -83,13 +83,13 @@
       <fieldset id="fieldset-regular" class="shape-fieldset">
         <legend>正多角形</legend>
         <label class="field"><span>頂点数 (3〜20)</span>
-          <input type="number" required id="regular-sides" min="3" max="20" step="1" value="6" />
+          <input type="number" required id="regular-sides" data-slider="3,20,1" min="3" max="20" step="1" value="6" />
         </label>
         <label class="field"><span>一辺の長さ</span>
           <input type="number" required id="regular-side-length" min="0.01" step="0.1" value="40" />
         </label>
         <label class="field"><span>回転角 (度、0で底辺が水平)</span>
-          <input type="number" required id="regular-rotation" step="1" value="0" />
+          <input type="number" required id="regular-rotation" data-slider="-180,180,1" step="1" value="0" />
         </label>
         <p class="error-message" id="regular-error"></p>
       </fieldset>
@@ -111,6 +111,7 @@
             <option value="asa">ASA（1辺と両端の角）</option>
           </select>
         </div>
+        <div id="triangle-diagram" class="triangle-diagram" aria-hidden="true"></div>
         <div id="triangle-sss" class="triangle-inputs">
           <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="sss-a" min="0.01" step="0.1" value="50" /></label>
           <label class="field"><span>辺 AC</span><input type="number" required id="sss-b" min="0.01" step="0.1" value="60" /></label>
@@ -118,14 +119,15 @@
         </div>
         <div id="triangle-sas" class="triangle-inputs" hidden>
           <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="sas-a" min="0.01" step="0.1" value="50" /></label>
-          <label class="field"><span>間の角 A (度)</span><input type="number" required id="sas-angle" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>間の角 A (度)</span><input type="number" required id="sas-angle" data-slider="1,179,1" min="0.01" max="179.99" step="0.1" value="60" /></label>
           <label class="field"><span>辺 AC</span><input type="number" required id="sas-b" min="0.01" step="0.1" value="60" /></label>
         </div>
         <div id="triangle-asa" class="triangle-inputs" hidden>
           <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="asa-side" min="0.01" step="0.1" value="60" /></label>
-          <label class="field"><span>角 A (度)</span><input type="number" required id="asa-angle-a" min="0.01" max="179.99" step="0.1" value="60" /></label>
-          <label class="field"><span>角 B (度)</span><input type="number" required id="asa-angle-b" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>角 A (度)</span><input type="number" required id="asa-angle-a" data-slider="1,178,1" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>角 B (度)</span><input type="number" required id="asa-angle-b" data-slider="1,178,1" min="0.01" max="179.99" step="0.1" value="60" /></label>
         </div>
+        <p class="measure-info" id="triangle-measures"></p>
         <p class="error-message" id="triangle-error"></p>
       </fieldset>
 
@@ -136,6 +138,7 @@
         </label>
         <p class="hint">方向角は基準（右方向・3時の方向）を0度として反時計回りに測った絶対角です。前の辺からの曲がり角ではありません。</p>
         <div id="general-edges"></div>
+        <label class="check-field"><input type="checkbox" id="general-autoclose" /> 最後の辺を自動で決めて閉じる</label>
         <p class="error-message" id="general-error"></p>
       </fieldset>
 
@@ -164,7 +167,7 @@
             <input type="number" required id="ann-decimals" min="0" max="4" step="1" value="1" />
           </label>
           <label class="field"><span>文字サイズ (px、長辺800基準)</span>
-            <input type="number" required id="ann-font-size" min="6" max="72" step="1" value="18" />
+            <input type="number" required id="ann-font-size" data-slider="8,48,1" min="6" max="72" step="1" value="18" />
           </label>
         </div>
       </fieldset>
@@ -201,10 +204,10 @@
       </div>
       <div id="oblique-params" hidden>
         <label class="field"><span>奥行き方向角度 (度)</span>
-          <input type="number" required id="oblique-angle" step="1" value="45" />
+          <input type="number" required id="oblique-angle" data-slider="0,90,1" step="1" value="45" />
         </label>
         <label class="field"><span>奥行き倍率</span>
-          <input type="number" required id="oblique-scale" step="0.05" min="0.05" max="2" value="0.5" />
+          <input type="number" required id="oblique-scale" data-slider="0.1,1,0.05" step="0.05" min="0.05" max="2" value="0.5" />
         </label>
         <p class="error-message" id="oblique-error"></p>
       </div>
@@ -221,7 +224,7 @@
     <fieldset class="shape-fieldset">
       <legend>線・塗りの設定</legend>
       <label class="field"><span>線色</span><input type="color" id="style-stroke" value="#111111" /></label>
-      <label class="field"><span>線幅</span><input type="number" required id="style-stroke-width" min="0.5" step="0.5" value="2" /></label>
+      <label class="field"><span>線幅</span><input type="number" required id="style-stroke-width" data-slider="0.5,8,0.5" min="0.5" step="0.5" value="2" /></label>
       <label class="field"><span>塗り</span>
         <select id="style-fill-mode">
           <option value="none">なし</option>

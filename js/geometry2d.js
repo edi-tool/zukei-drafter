@@ -138,3 +138,44 @@ export function generalPolygon({ lengths, headingsDeg }) {
   // A closed path's last point duplicates the start, so drop it.
   return { ok: true, points: closed ? points.slice(0, -1) : points, closed, closureError };
 }
+
+/**
+ * The edge that closes a path of edges back to its start: given all edges but
+ * the last, returns the last edge's length and heading (degrees in [0, 360)).
+ * @returns {{ok:true, length:number, headingDeg:number} | {ok:false, reason:string}}
+ */
+export function closingEdge({ lengths, headingsDeg }) {
+  if (!lengths.every((l) => l > 0) || !headingsDeg.every(Number.isFinite)) {
+    return { ok: false, reason: '最後以外の辺の長さ・方向角を正しく入力してください。' };
+  }
+  let [x, y] = [0, 0];
+  for (let i = 0; i < lengths.length; i++) {
+    x += lengths[i] * Math.cos(deg2rad(headingsDeg[i]));
+    y += lengths[i] * Math.sin(deg2rad(headingsDeg[i]));
+  }
+  const length = Math.hypot(x, y);
+  const perimeter = lengths.reduce((sum, l) => sum + l, 0);
+  if (length <= EPSILON * perimeter) {
+    return { ok: false, reason: '最後以外の辺だけで既に閉じているため、最後の辺を決められません。' };
+  }
+  const headingDeg = (((Math.atan2(-y, -x) * 180) / Math.PI) % 360 + 360) % 360;
+  return { ok: true, length, headingDeg };
+}
+
+/**
+ * Side lengths and interior angles (degrees) of triangle [A, B, C].
+ * @returns {{sides:{AB:number, BC:number, CA:number}, angles:{A:number, B:number, C:number}}}
+ */
+export function triangleMeasures([A, B, C]) {
+  const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const angleAt = (p, q, r) => {
+    const u = [q[0] - p[0], q[1] - p[1]];
+    const v = [r[0] - p[0], r[1] - p[1]];
+    const cos = (u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v));
+    return (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI;
+  };
+  return {
+    sides: { AB: dist(A, B), BC: dist(B, C), CA: dist(C, A) },
+    angles: { A: angleAt(A, B, C), B: angleAt(B, C, A), C: angleAt(C, A, B) },
+  };
+}
