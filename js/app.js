@@ -3,7 +3,8 @@
 import { regularPolygon, triangleFromSSS, triangleFromSAS, triangleFromASA, generalPolygon } from './geometry2d.js';
 import { renderSvgString } from './render-svg.js';
 import { buildScene2D, buildScene3D } from './scene-builder.js';
-import { downloadSvg, downloadPng } from './export-png.js';
+import { downloadSvg, downloadPng, svgToPngBlob } from './export-png.js';
+import { encodeState, decodeState } from './url-state.js';
 
 const $ = (id) => document.getElementById(id);
 const num = (id) => Number($(id).value);
@@ -16,6 +17,182 @@ const MAX_PNG_SIDE = 10000;
 
 let mode = '2d';
 let current = null; // { svg, width, height } of the last successful render
+let defaults = {}; // form state at page load, so the URL only carries changes
+let restoring = true; // suppress URL writes until the initial state is applied
+
+// Small line icons for the shape chips (24x24, stroke = currentColor).
+const ICONS = {
+  regular: '<polygon points="12,2.5 20.5,7.3 20.5,16.7 12,21.5 3.5,16.7 3.5,7.3" />',
+  triangle: '<polygon points="12,3 21.5,20.5 2.5,20.5" />',
+  general: '<polygon points="4,18 7,5 15,3 21,11 14,20" />',
+  cube: '<path d="M4 8h11v11H4zM4 8l5-5h11v11l-5 5M15 8l5-5" />',
+  box: '<path d="M2 10h14v9H2zM2 10l5-5h15v9l-6 5M16 10l6-5" />',
+  triangularPrism: '<path d="M3 20l5-13 5 13zM8 7h11l5 13H13M19 7" transform="scale(.9) translate(-1 1)" />',
+  quadrangularPrism: '<path d="M5 8h9v13H5zM5 8l4-4h9v13l-4 4M14 8l4-4" />',
+  triangularPyramid: '<path d="M12 3L3 19l9 2 9-4zM12 3l0 18" />',
+  quadrangularPyramid: '<path d="M12 3L3 16l6 4 12-2zM12 3l-3 17M12 3l9 15M3 16l4-3 14 5" />',
+  cylinder: '<ellipse cx="12" cy="6" rx="7" ry="2.5" /><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6" />',
+  cone: '<path d="M12 3L5 18c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5z" />',
+};
+
+/** Replace a hidden <select> with a row of radio-like chips that drive it. */
+function buildChips(container) {
+  const select = $(container.dataset.for);
+  container.setAttribute('role', 'radiogroup');
+  for (const option of select.options) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.dataset.value = option.value;
+    chip.setAttribute('role', 'radio');
+    const icon = ICONS[option.value];
+    chip.innerHTML = (icon ? `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>` : '') + `<span>${option.textContent}</span>`;
+    chip.addEventListener('click', () => {
+      if (select.value === option.value) return;
+      select.value = option.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    container.appendChild(chip);
+  }
+}
+
+function syncChips() {
+  for (const container of document.querySelectorAll('.chips')) {
+    const value = $(container.dataset.for).value;
+    for (const chip of container.children) {
+      const on = chip.dataset.value === value;
+      chip.setAttribute('aria-checked', String(on));
+      chip.tabIndex = on ? 0 : -1;
+    }
+  }
+}
+
+// Arrow keys move between chips, as in a native radio group.
+function onChipKeydown(event) {
+  const chip = event.target.closest('.chip');
+  if (!chip || !['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
+  event.preventDefault();
+  const chips = [...chip.parentElement.children];
+  const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+  const next = chips[(chips.indexOf(chip) + step + chips.length) % chips.length];
+  next.click();
+  next.focus();
+}
+
+const TRIANGLE_PRESETS = {
+  equilateral: { 'sss-a': 50, 'sss-b': 50, 'sss-c': 50 },
+  right345: { 'sss-a': 40, 'sss-b': 30, 'sss-c': 50 },
+  isosceles: { 'sss-a': 40, 'sss-b': 60, 'sss-c': 60 },
+};
+
+function applyTrianglePreset(name) {
+  $('triangle-method').value = 'sss';
+  for (const [id, value] of Object.entries(TRIANGLE_PRESETS[name])) $(id).value = value;
+  if (name === 'right345') $('ann-right-angles').value = 'auto';
+  $('panel').dispatchEvent(new Event('input'));
+}
+
+// Highlight empty / out-of-range numbers. Native :invalid is not used because it
+// also flags harmless step mismatches (e.g. 40 against min=0.01 step=0.1).
+function markInvalidFields() {
+  for (const el of document.querySelectorAll('#panel input[type="number"]')) {
+    const v = el.validity;
+    const bad = v.valueMissing || v.badInput || v.rangeUnderflow || v.rangeOverflow;
+    if (bad) el.setAttribute('aria-invalid', 'true');
+    else el.removeAttribute('aria-invalid');
+  }
+}
+
+// ---------- toast ----------
+
+let toastTimer = 0;
+function toast(message, isError = false) {
+  const el = $('toast');
+  el.textContent = message;
+  el.classList.toggle('is-error', isError);
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.hidden = true;
+  }, 2500);
+}
+
+// ---------- URL state ----------
+
+function collectState() {
+  const state = { mode };
+  for (const el of $('panel').querySelectorAll('input[id], select[id]')) {
+    state[el.id] = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
+  }
+  document.querySelectorAll('.general-length').forEach((el, i) => (state[`gl${i}`] = el.value));
+  document.querySelectorAll('.general-heading').forEach((el, i) => (state[`gh${i}`] = el.value));
+  for (const el of document.querySelectorAll('.shape3d-field')) state[`d.${el.dataset.key}`] = el.value;
+  return state;
+}
+
+function applyState(state) {
+  const setValue = (el, value) => {
+    if (el.type === 'checkbox') el.checked = value === '1';
+    else el.value = value;
+  };
+  // Controls that rebuild other fields go first.
+  for (const id of ['general-count', 'shape3d-type']) if (id in state) setValue($(id), state[id]);
+  buildGeneralEdgeInputs();
+  buildShape3DFields();
+  for (const [key, value] of Object.entries(state)) {
+    const el = document.getElementById(key);
+    if (el && $('panel').contains(el) && el.matches('input, select')) setValue(el, value);
+  }
+  const lengths = document.querySelectorAll('.general-length');
+  const headings = document.querySelectorAll('.general-heading');
+  lengths.forEach((el, i) => {
+    if (`gl${i}` in state) el.value = state[`gl${i}`];
+    if (`gh${i}` in state) headings[i].value = state[`gh${i}`];
+  });
+  if (Object.keys(state).some((k) => /^g[lh]\d/.test(k))) $('general-edges').dataset.edited = 'true';
+  for (const el of document.querySelectorAll('.shape3d-field')) {
+    const key = `d.${el.dataset.key}`;
+    if (key in state) el.value = state[key];
+  }
+  if (state.mode === '3d' || state.mode === '2d') mode = state.mode;
+}
+
+// Debounced: browsers throttle rapid history.replaceState calls (typing fires one render per key).
+let urlTimer = 0;
+function writeUrlState() {
+  if (restoring) return;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(writeUrlStateNow, 250);
+}
+
+function writeUrlStateNow() {
+  const hash = encodeState(collectState(), defaults);
+  const url = location.pathname + location.search + (hash ? `#${hash}` : '');
+  if (url !== location.pathname + location.search + location.hash) history.replaceState(null, '', url);
+}
+
+/** ASCII file name (without extension); Chromium drops non-ASCII download names. */
+function fileBaseName() {
+  if (mode === '2d') {
+    const type = $('shape2d-type').value;
+    if (type === 'regular') return `regular-${$('regular-sides').value}gon`;
+    if (type === 'triangle') return `triangle-${$('triangle-method').value}`;
+    return `polygon-${document.querySelectorAll('.general-length').length}`;
+  }
+  return `${$('shape3d-type').value}_${$('projection-type').value}`;
+}
+
+/** A short Japanese label for the current figure (shown under the preview). */
+function figureName() {
+  if (mode === '2d') {
+    const type = $('shape2d-type').value;
+    if (type === 'regular') return `正${$('regular-sides').value}角形`;
+    if (type === 'triangle') return '三角形';
+    return `${document.querySelectorAll('.general-length').length}角形`;
+  }
+  const label = (id) => $(id).selectedOptions[0].textContent;
+  return `${label('shape3d-type')}_${label('projection-type')}`;
+}
 
 function currentStyle() {
   const fillMode = $('style-fill-mode').value;
@@ -54,8 +231,8 @@ function buildGeneralEdgeInputs() {
     row.className = 'edge-row';
     row.innerHTML = `
       <span>辺${i + 1}</span>
-      <input type="number" class="general-length" min="0.01" step="0.1" value="${escapeHtml(length)}" aria-label="辺${i + 1}の長さ" />
-      <input type="number" class="general-heading" step="any" value="${escapeHtml(heading)}" aria-label="辺${i + 1}の方向角" />
+      <input type="number" required class="general-length" min="0.01" step="0.1" value="${escapeHtml(length)}" aria-label="辺${i + 1}の長さ" />
+      <input type="number" required class="general-heading" step="any" value="${escapeHtml(heading)}" aria-label="辺${i + 1}の方向角" />
     `;
     container.appendChild(row);
   }
@@ -177,7 +354,7 @@ function buildShape3DFields() {
   for (const field of SHAPE3D_FIELDS[$('shape3d-type').value]) {
     const label = document.createElement('label');
     label.className = 'field';
-    label.innerHTML = `<span>${field.label}</span><input type="number" class="shape3d-field" data-key="${field.id}" min="0.01" step="0.5" value="${field.value}" />`;
+    label.innerHTML = `<span>${field.label}</span><input type="number" required class="shape3d-field" data-key="${field.id}" min="0.01" step="0.5" value="${field.value}" />`;
     container.appendChild(label);
   }
 }
@@ -225,8 +402,13 @@ function render() {
     }
   }
   current = scene ? { svg: renderSvgString(scene), width: scene.width, height: scene.height } : null;
-  $('preview').innerHTML = current ? current.svg : '';
+  $('preview').innerHTML = current
+    ? current.svg
+    : '<p class="preview-empty">図形を描けません。左側の赤いメッセージの項目を確認してください。</p>';
+  $('preview-caption').textContent = current ? `${figureName()}（${current.width} × ${current.height} px 基準）` : '';
+  markInvalidFields();
   updateExportInfo();
+  writeUrlState();
 }
 
 function pngSize() {
@@ -245,6 +427,7 @@ function updateExportInfo() {
   $('png-custom-width-field').hidden = $('png-resolution').value !== 'custom';
   const size = pngSize();
   $('btn-save-svg').disabled = !current;
+  $('btn-copy-png').disabled = !size;
   $('btn-save-png').disabled = !size;
   if (!current) {
     $('png-size-info').textContent = '図形が生成されていないため保存できません。';
@@ -266,6 +449,7 @@ function setMode(newMode) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', String(active));
   });
+  syncChips();
   render();
 }
 
@@ -285,6 +469,7 @@ function syncVisibility() {
   $('ann-length-style-field').hidden = !$('ann-lengths').checked;
   $('ann-unit-field').hidden = !$('ann-lengths').checked;
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
+  syncChips();
 }
 
 function wireEvents() {
@@ -305,8 +490,56 @@ function wireEvents() {
     render();
   });
 
+  document.querySelectorAll('.chips').forEach(buildChips);
+  $('panel').addEventListener('keydown', onChipKeydown);
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyTrianglePreset(btn.dataset.preset));
+  });
+
+  $('btn-copy-png').addEventListener('click', async () => {
+    const size = pngSize();
+    if (!current || !size) return;
+    try {
+      // Pass the Blob promise directly so Safari keeps the user-gesture context.
+      const blob = svgToPngBlob(current.svg, {
+        outputWidth: size.width,
+        outputHeight: size.height,
+        background: $('png-background').value,
+      });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast(`PNG（${size.width} × ${size.height} px）をコピーしました`);
+    } catch (err) {
+      console.info(err);
+      toast('このブラウザではクリップボードへのコピーができません。「PNGを保存」を使ってください。', true);
+    }
+  });
+
+  $('btn-copy-link').addEventListener('click', async () => {
+    clearTimeout(urlTimer);
+    writeUrlStateNow();
+    try {
+      await navigator.clipboard.writeText(location.href);
+      toast('この図のリンクをコピーしました');
+    } catch {
+      toast('リンクをコピーできませんでした。アドレスバーのURLをそのまま使えます。', true);
+    }
+  });
+
+  $('btn-reset').addEventListener('click', () => {
+    if (!confirm('すべての入力を初期値に戻しますか？')) return;
+    delete $('general-edges').dataset.edited;
+    clearTimeout(urlTimer);
+    restoring = true;
+    applyState(defaults);
+    restoring = false;
+    setMode(mode);
+    syncVisibility();
+    render();
+    toast('初期値に戻しました');
+  });
+
   $('btn-save-svg').addEventListener('click', () => {
-    if (current) downloadSvg(current.svg, 'shape.svg');
+    if (current) downloadSvg(current.svg, `${fileBaseName()}.svg`);
   });
 
   $('btn-save-png').addEventListener('click', async () => {
@@ -318,7 +551,7 @@ function wireEvents() {
       await downloadPng(
         current.svg,
         { outputWidth: size.width, outputHeight: size.height, background: $('png-background').value },
-        'shape.png',
+        `${fileBaseName()}.png`,
       );
     } catch (err) {
       console.error(err);
@@ -331,6 +564,10 @@ function wireEvents() {
 
 buildGeneralEdgeInputs();
 buildShape3DFields();
-syncVisibility();
 wireEvents();
-render();
+defaults = collectState();
+const initial = decodeState(location.hash);
+if (Object.keys(initial).length) applyState(initial);
+restoring = false;
+syncVisibility();
+setMode(mode);

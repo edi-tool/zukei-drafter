@@ -18,7 +18,7 @@
   （#4 + #7）。既定は非表示。3D の注釈は未対応。
 * #4 と #5 は同じ機能を並行実装した重複PR（詳細は下記「#5 について」）。
   #5 はマージせず close、#5 の非重複差分は #7 で #4 の上に作り直して追加。
-* テスト: `npm test`（単体 123件）、`npm run test:e2e`（ブラウザ 20項目）。
+* テスト: `npm test`（単体 128件）、`npm run test:e2e`（ブラウザ 24項目）。
   GitHub Actions（`.github/workflows/test.yml`）で push / PR ごとに実行。
 
 ## 経緯
@@ -38,7 +38,7 @@
   ヒント文）を、#4 の実装（`annotate2D` / `Placer` 等）の上に作り直して追加。
   マージ済み、CI（unit / browser）緑。設計判断は下記「#7 の設計判断」参照 |
 | #8 | #7 のマージをこの HANDOFF.md に記録（ドキュメントのみ） |
-| （本PR） | 一般多角形で辺数を変えると入力済みの辺が消える不具合を修正（編集済みなら残る辺の値を保持）。e2e が Playwright 同梱ブラウザ不在時に `/opt/pw-browsers/chromium` を自動で使うように |
+| #9 | UI/UX 改修（下記「#9 の設計判断」）。一般多角形で辺数を変えると入力済みの辺が消える不具合を修正（編集済みなら残る辺の値を保持）。e2e が Playwright 同梱ブラウザ不在時に `/opt/pw-browsers/chromium` を自動で使うように |
 
 #2 で修正した主な不具合（再発防止のため記録）:
 
@@ -109,6 +109,26 @@ scene item の持たせ方、自動フィットの収束方法などが全部違
   具体的な不具合報告が無いことと「自由作図ツールにしない」という方針から
   見送った（#5 でも同じ判断をしていた）。
 
+### #9 の設計判断（UI/UX 改修）
+
+* **種類・形状・決め方・投影法はチップボタン**（`.chips[data-for=<select id>]`）。
+  元の `<select>` は `hidden` で残し「正本」とする。チップは select の値を
+  変えて `input` を発火するだけなので、計算側・既存ロジックは無変更。
+  e2e では `choose(selectId, value)` ヘルパーでチップをクリックする
+  （hidden の select に `selectOption` は使えない）。
+* **URL ハッシュに状態を保存**（`js/url-state.js`、既定値と違う項目のみ）。
+  `history.replaceState` は連打すると Chromium が間引くため 250ms デバウンス。
+  一般多角形の辺は `gl<i>`/`gh<i>`、3D 寸法は `d.<key>`。
+  これで旧「次にやること 4. 設定の共有」は実装済み。
+* **ダウンロード名は ASCII**（例 `regular-6gon.png`、`box_oblique.png`）。
+  Chromium は非 ASCII の `download` 属性名を捨てて `download` にするため。
+  日本語名はプレビュー下のキャプションに表示。
+* **入力欄の赤枠は `aria-invalid`**（空欄・範囲外のみ）。ネイティブ
+  `:invalid` は step 不一致（min=0.01 step=0.1 で 40 など）でも付くため使わない。
+* **不具合修正**: 直角記号「自動」で 90° の角が無い図形（既定の正六角形など）を
+  表示すると `buildScene2D` が `null.minX` で例外を出し、図が消えていた（#7 由来）。
+  `annotate2D` が何も描かないとき（`bounds === null`）は pad ループを抜ける。
+
 ## 開発の進め方
 
 ```
@@ -159,7 +179,6 @@ CHROMIUM_PATH=/path/to/chromium npm run test:e2e   # 既存の Chromium を使�
    三角柱（教科書で多い描き方）など。現状は円柱・円錐の軸が Y 軸固定。
    `geometry3d.js` の `axis` と `curved-solids.js` はすでに任意の軸に対応した
    式になっているので、主に形状生成と UI の追加で済む見込み。
-4. **設定の共有**: 入力値を URL クエリに保存し、同じ図を再生成できるようにする。
 
 ## 設計上の決定事項（変更する場合は理由を記録すること）
 

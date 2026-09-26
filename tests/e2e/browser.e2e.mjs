@@ -59,6 +59,11 @@ async function check(name, fn) {
 async function set(selector, value) {
   await page.fill(selector, String(value));
 }
+// Shape / method / projection pickers are chip buttons driving a hidden <select>.
+async function choose(selectId, value) {
+  await page.click(`.chips[data-for="${selectId}"] .chip[data-value="${value}"]`);
+  assert.equal(await page.inputValue(`#${selectId}`), value);
+}
 const preview = () => page.locator('#preview').innerHTML();
 const count = async (tag) => ((await preview()).match(new RegExp(`<${tag}[ >]`, 'g')) || []).length;
 const dashed = async () => ((await preview()).match(/stroke-dasharray/g) || []).length;
@@ -89,14 +94,14 @@ try {
       general: await page.locator('#fieldset-general').isVisible(),
     });
     assert.deepEqual(await visible(), { regular: true, triangle: false, general: false });
-    await page.selectOption('#shape2d-type', 'general');
+    await choose('shape2d-type', 'general');
     assert.deepEqual(await visible(), { regular: false, triangle: false, general: true });
     assert.equal(await page.locator('#png-custom-width-field').isVisible(), false);
-    await page.selectOption('#shape2d-type', 'regular');
+    await choose('shape2d-type', 'regular');
   });
 
   await check('2D SSS triangle: valid, then impossible, then empty input', async () => {
-    await page.selectOption('#shape2d-type', 'triangle');
+    await choose('shape2d-type', 'triangle');
     await set('#sss-a', 3);
     await set('#sss-b', 4);
     await set('#sss-c', 5);
@@ -111,7 +116,7 @@ try {
   });
 
   await check('2D general polygon: defaults close for 7 edges, editing opens it', async () => {
-    await page.selectOption('#shape2d-type', 'general');
+    await choose('shape2d-type', 'general');
     await set('#general-count', 7);
     assert.equal(await page.locator('#general-error').innerText(), '');
     assert.equal(await count('polygon'), 1);
@@ -127,8 +132,8 @@ try {
   });
 
   await check('annotations: vertex names, lengths (label / dimension line), angles, then off again', async () => {
-    await page.selectOption('#shape2d-type', 'triangle');
-    await page.selectOption('#triangle-method', 'sss');
+    await choose('shape2d-type', 'triangle');
+    await choose('triangle-method', 'sss');
     await set('#sss-a', 3);
     await set('#sss-b', 4);
     await set('#sss-c', 5);
@@ -185,7 +190,7 @@ try {
   });
 
   await check('annotations: text in the PNG matches the browser\'s own glyphs and stays inside the image', async () => {
-    await page.selectOption('#shape2d-type', 'regular');
+    await choose('shape2d-type', 'regular');
     await page.check('#ann-vertex-names');
     await page.check('#ann-lengths');
     await page.check('#ann-angles');
@@ -264,8 +269,8 @@ try {
   const projections = ['isometric', 'cavalier', 'cabinet', 'oblique'];
   for (const projection of projections) {
     await check(`3D cube (${projection}): 12 edges, 3 dashed`, async () => {
-      await page.selectOption('#shape3d-type', 'cube');
-      await page.selectOption('#projection-type', projection);
+      await choose('shape3d-type', 'cube');
+      await choose('projection-type', projection);
       await page.selectOption('#hidden-line-mode', 'dashed');
       assert.equal(await count('line'), 12);
       assert.equal(await dashed(), 3);
@@ -275,9 +280,9 @@ try {
   await check('3D every shape renders under every projection without errors', async () => {
     const shapes = await page.$$eval('#shape3d-type option', (opts) => opts.map((o) => o.value));
     for (const shape of shapes) {
-      await page.selectOption('#shape3d-type', shape);
+      await choose('shape3d-type', shape);
       for (const projection of projections) {
-        await page.selectOption('#projection-type', projection);
+        await choose('projection-type', projection);
         assert.ok((await preview()).includes('<svg'), `${shape}/${projection}`);
         assert.ok(!(await preview()).includes('NaN'), `${shape}/${projection} has NaN`);
       }
@@ -285,8 +290,8 @@ try {
   });
 
   await check('3D cylinder: hidden back arc is dashed or omitted per setting', async () => {
-    await page.selectOption('#shape3d-type', 'cylinder');
-    await page.selectOption('#projection-type', 'cabinet');
+    await choose('shape3d-type', 'cylinder');
+    await choose('projection-type', 'cabinet');
     await page.selectOption('#hidden-line-mode', 'dashed');
     assert.equal(await count('path'), 3);
     assert.equal(await dashed(), 1);
@@ -300,7 +305,7 @@ try {
     assert.match(await page.locator('#shape3d-error').innerText(), /正の数/);
     assert.equal(await count('svg'), 0);
     await page.locator('.shape3d-field').first().fill('30');
-    await page.selectOption('#projection-type', 'oblique');
+    await choose('projection-type', 'oblique');
     await set('#oblique-scale', 0);
     assert.match(await page.locator('#oblique-error').innerText(), /奥行き倍率/);
     await set('#oblique-scale', 0.5);
@@ -308,13 +313,13 @@ try {
   });
 
   await check('PNG download: 4x preset gives > 2000px with the reported size', async () => {
-    await page.selectOption('#shape3d-type', 'box');
+    await choose('shape3d-type', 'box');
     await page.selectOption('#png-resolution', '4');
     const info = await page.locator('#png-size-info').innerText();
     const [, w, h] = info.match(/(\d+) × (\d+)/).map(Number);
     assert.ok(w > 2000);
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-png')]);
-    assert.equal(download.suggestedFilename(), 'shape.png');
+    assert.equal(download.suggestedFilename(), 'box_oblique.png');
     const size = pngInfo(await readFile(await download.path()));
     assert.deepEqual(size, { width: w, height: h });
   });
@@ -356,8 +361,64 @@ try {
 
   await check('SVG download', async () => {
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-save-svg')]);
-    assert.equal(download.suggestedFilename(), 'shape.svg');
+    assert.equal(download.suggestedFilename(), 'box_oblique.svg');
     assert.match(await readFile(await download.path(), 'utf8'), /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  });
+
+  await check('UI: triangle presets, invalid-field highlight and empty-preview message', async () => {
+    await page.click('.mode-btn[data-mode="2d"]');
+    await choose('shape2d-type', 'triangle');
+    await page.click('.preset-btn[data-preset="right345"]');
+    assert.equal(await page.inputValue('#triangle-method'), 'sss');
+    assert.equal(await page.getAttribute('.chips[data-for="triangle-method"] .chip[data-value="sss"]', 'aria-checked'), 'true');
+    assert.equal(await page.inputValue('#ann-right-angles'), 'auto');
+    assert.equal(await count('polygon'), 1);
+    await set('#sss-a', '');
+    assert.equal(await page.getAttribute('#sss-a', 'aria-invalid'), 'true');
+    assert.equal(await page.getAttribute('#sss-b', 'aria-invalid'), null, 'valid values are not flagged');
+    assert.match(await page.locator('.preview-empty').innerText(), /赤いメッセージ/);
+    await set('#sss-a', 40);
+    assert.equal(await count('polygon'), 1);
+  });
+
+  await check('UI: settings live in the URL hash and are restored on reload; reset clears them', async () => {
+    await choose('shape2d-type', 'regular');
+    await set('#regular-sides', 5);
+    await page.waitForURL(/regular-sides=5/);
+    await page.reload();
+    await page.waitForSelector('#preview svg');
+    assert.equal(await page.inputValue('#regular-sides'), '5');
+    assert.equal(await page.getAttribute('.chips[data-for="shape2d-type"] .chip[data-value="regular"]', 'aria-checked'), 'true');
+    assert.match(await page.locator('#preview-caption').innerText(), /正5角形/);
+    page.once('dialog', (d) => d.accept());
+    await page.click('#btn-reset');
+    assert.equal(await page.inputValue('#regular-sides'), '6');
+    assert.equal(await page.inputValue('#ann-right-angles'), 'hidden');
+    await page.waitForTimeout(400);
+    assert.equal(new URL(page.url()).hash, '');
+  });
+
+  await check('UI: 3D state (mode, shape, dimensions) round-trips through the URL', async () => {
+    await page.click('.mode-btn[data-mode="3d"]');
+    await choose('shape3d-type', 'cylinder');
+    await set('.shape3d-field[data-key="radius"]', 12);
+    await page.waitForURL(/d\.radius=12/);
+    await page.reload();
+    await page.waitForSelector('#preview svg');
+    assert.equal(await page.locator('#panel-3d').isVisible(), true);
+    assert.equal(await page.inputValue('#shape3d-type'), 'cylinder');
+    assert.equal(await page.inputValue('.shape3d-field[data-key="radius"]'), '12');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#btn-reset');
+    assert.equal(await page.locator('#panel-2d').isVisible(), true);
+  });
+
+  await check('UI: copy PNG to the clipboard', async () => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
+    await page.click('#btn-copy-png');
+    await page.waitForFunction(() => /PNG.*コピーしました/.test(document.querySelector('#toast').textContent));
+    const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((item) => item.types));
+    assert.ok(types.includes('image/png'), `clipboard types: ${types}`);
   });
 
   await check('no console errors or warnings during the whole session', async () => {

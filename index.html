@@ -10,6 +10,10 @@
 <body>
 <header class="app-header">
   <h1>図形作成さん</h1>
+  <div class="header-actions">
+    <button type="button" class="ghost-btn" id="btn-copy-link" title="今の設定を再現できるリンクをコピー">リンクをコピー</button>
+    <button type="button" class="ghost-btn" id="btn-reset" title="すべての入力を初期値に戻す">初期値に戻す</button>
+  </div>
   <div class="mode-switch" role="tablist" aria-label="モード切替">
     <button type="button" class="mode-btn active" data-mode="2d" role="tab" aria-selected="true">2次元</button>
     <button type="button" class="mode-btn" data-mode="3d" role="tab" aria-selected="false">3次元</button>
@@ -20,52 +24,61 @@
   <section class="panel" id="panel">
     <!-- 2D panel -->
     <div class="mode-panel" id="panel-2d">
-      <label class="field">
-        <span>種類</span>
-        <select id="shape2d-type">
+      <div class="field">
+        <span id="shape2d-type-label">種類</span>
+        <div class="chips chips-icons" data-for="shape2d-type" aria-labelledby="shape2d-type-label"></div>
+        <select id="shape2d-type" hidden>
           <option value="regular">正多角形</option>
           <option value="triangle">三角形</option>
           <option value="general">一般多角形</option>
         </select>
-      </label>
+      </div>
 
       <fieldset id="fieldset-regular" class="shape-fieldset">
         <legend>正多角形</legend>
         <label class="field"><span>頂点数 (3〜20)</span>
-          <input type="number" id="regular-sides" min="3" max="20" step="1" value="6" />
+          <input type="number" required id="regular-sides" min="3" max="20" step="1" value="6" />
         </label>
         <label class="field"><span>一辺の長さ</span>
-          <input type="number" id="regular-side-length" min="0.01" step="0.1" value="40" />
+          <input type="number" required id="regular-side-length" min="0.01" step="0.1" value="40" />
         </label>
         <label class="field"><span>回転角 (度、0で底辺が水平)</span>
-          <input type="number" id="regular-rotation" step="1" value="0" />
+          <input type="number" required id="regular-rotation" step="1" value="0" />
         </label>
         <p class="error-message" id="regular-error"></p>
       </fieldset>
 
       <fieldset id="fieldset-triangle" class="shape-fieldset" hidden>
         <legend>三角形</legend>
-        <label class="field"><span>構成方法</span>
-          <select id="triangle-method">
+        <div class="field"><span>よく使う形</span>
+          <div class="preset-row">
+            <button type="button" class="preset-btn" data-preset="equilateral">正三角形</button>
+            <button type="button" class="preset-btn" data-preset="right345">直角三角形 (3:4:5)</button>
+            <button type="button" class="preset-btn" data-preset="isosceles">二等辺三角形</button>
+          </div>
+        </div>
+        <div class="field"><span id="triangle-method-label">決め方</span>
+          <div class="chips" data-for="triangle-method" aria-labelledby="triangle-method-label"></div>
+          <select id="triangle-method" hidden>
             <option value="sss">SSS（3辺）</option>
             <option value="sas">SAS（2辺と間の角）</option>
             <option value="asa">ASA（1辺と両端の角）</option>
           </select>
-        </label>
+        </div>
         <div id="triangle-sss" class="triangle-inputs">
-          <label class="field"><span>辺 AB（底辺）</span><input type="number" id="sss-a" min="0.01" step="0.1" value="50" /></label>
-          <label class="field"><span>辺 AC</span><input type="number" id="sss-b" min="0.01" step="0.1" value="60" /></label>
-          <label class="field"><span>辺 BC</span><input type="number" id="sss-c" min="0.01" step="0.1" value="70" /></label>
+          <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="sss-a" min="0.01" step="0.1" value="50" /></label>
+          <label class="field"><span>辺 AC</span><input type="number" required id="sss-b" min="0.01" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 BC</span><input type="number" required id="sss-c" min="0.01" step="0.1" value="70" /></label>
         </div>
         <div id="triangle-sas" class="triangle-inputs" hidden>
-          <label class="field"><span>辺 AB（底辺）</span><input type="number" id="sas-a" min="0.01" step="0.1" value="50" /></label>
-          <label class="field"><span>間の角 A (度)</span><input type="number" id="sas-angle" min="0.01" max="179.99" step="0.1" value="60" /></label>
-          <label class="field"><span>辺 AC</span><input type="number" id="sas-b" min="0.01" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="sas-a" min="0.01" step="0.1" value="50" /></label>
+          <label class="field"><span>間の角 A (度)</span><input type="number" required id="sas-angle" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 AC</span><input type="number" required id="sas-b" min="0.01" step="0.1" value="60" /></label>
         </div>
         <div id="triangle-asa" class="triangle-inputs" hidden>
-          <label class="field"><span>辺 AB（底辺）</span><input type="number" id="asa-side" min="0.01" step="0.1" value="60" /></label>
-          <label class="field"><span>角 A (度)</span><input type="number" id="asa-angle-a" min="0.01" max="179.99" step="0.1" value="60" /></label>
-          <label class="field"><span>角 B (度)</span><input type="number" id="asa-angle-b" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>辺 AB（底辺）</span><input type="number" required id="asa-side" min="0.01" step="0.1" value="60" /></label>
+          <label class="field"><span>角 A (度)</span><input type="number" required id="asa-angle-a" min="0.01" max="179.99" step="0.1" value="60" /></label>
+          <label class="field"><span>角 B (度)</span><input type="number" required id="asa-angle-b" min="0.01" max="179.99" step="0.1" value="60" /></label>
         </div>
         <p class="error-message" id="triangle-error"></p>
       </fieldset>
@@ -73,7 +86,7 @@
       <fieldset id="fieldset-general" class="shape-fieldset" hidden>
         <legend>一般多角形</legend>
         <label class="field"><span>頂点数</span>
-          <input type="number" id="general-count" min="3" max="20" step="1" value="4" />
+          <input type="number" required id="general-count" min="3" max="20" step="1" value="4" />
         </label>
         <p class="hint">方向角は基準（右方向・3時の方向）を0度として反時計回りに測った絶対角です。前の辺からの曲がり角ではありません。</p>
         <div id="general-edges"></div>
@@ -102,10 +115,10 @@
             <input type="text" id="ann-unit" maxlength="8" value="" />
           </label>
           <label class="field"><span>小数点以下の桁数 (0〜4)</span>
-            <input type="number" id="ann-decimals" min="0" max="4" step="1" value="1" />
+            <input type="number" required id="ann-decimals" min="0" max="4" step="1" value="1" />
           </label>
           <label class="field"><span>文字サイズ (px、長辺800基準)</span>
-            <input type="number" id="ann-font-size" min="6" max="72" step="1" value="18" />
+            <input type="number" required id="ann-font-size" min="6" max="72" step="1" value="18" />
           </label>
         </div>
       </fieldset>
@@ -113,9 +126,10 @@
 
     <!-- 3D panel -->
     <div class="mode-panel" id="panel-3d" hidden>
-      <label class="field">
-        <span>形状</span>
-        <select id="shape3d-type">
+      <div class="field">
+        <span id="shape3d-type-label">形状</span>
+        <div class="chips chips-icons" data-for="shape3d-type" aria-labelledby="shape3d-type-label"></div>
+        <select id="shape3d-type" hidden>
           <option value="cube">立方体</option>
           <option value="box">直方体</option>
           <option value="triangularPrism">三角柱</option>
@@ -125,25 +139,26 @@
           <option value="cylinder">円柱</option>
           <option value="cone">円錐</option>
         </select>
-      </label>
+      </div>
       <div id="shape3d-params"></div>
       <p class="error-message" id="shape3d-error"></p>
 
-      <label class="field">
-        <span>投影法</span>
-        <select id="projection-type">
+      <div class="field">
+        <span id="projection-type-label">投影法</span>
+        <div class="chips" data-for="projection-type" aria-labelledby="projection-type-label"></div>
+        <select id="projection-type" hidden>
           <option value="isometric">等角投影</option>
           <option value="cavalier">カバリエ投影</option>
           <option value="cabinet">キャビネット投影</option>
           <option value="oblique">任意斜投影</option>
         </select>
-      </label>
+      </div>
       <div id="oblique-params" hidden>
         <label class="field"><span>奥行き方向角度 (度)</span>
-          <input type="number" id="oblique-angle" step="1" value="45" />
+          <input type="number" required id="oblique-angle" step="1" value="45" />
         </label>
         <label class="field"><span>奥行き倍率</span>
-          <input type="number" id="oblique-scale" step="0.05" min="0.05" max="2" value="0.5" />
+          <input type="number" required id="oblique-scale" step="0.05" min="0.05" max="2" value="0.5" />
         </label>
         <p class="error-message" id="oblique-error"></p>
       </div>
@@ -160,7 +175,7 @@
     <fieldset class="shape-fieldset">
       <legend>線・塗りの設定</legend>
       <label class="field"><span>線色</span><input type="color" id="style-stroke" value="#111111" /></label>
-      <label class="field"><span>線幅</span><input type="number" id="style-stroke-width" min="0.5" step="0.5" value="2" /></label>
+      <label class="field"><span>線幅</span><input type="number" required id="style-stroke-width" min="0.5" step="0.5" value="2" /></label>
       <label class="field"><span>塗り</span>
         <select id="style-fill-mode">
           <option value="none">なし</option>
@@ -188,20 +203,24 @@
         </select>
       </label>
       <label class="field" id="png-custom-width-field" hidden><span>出力幅 (px)</span>
-        <input type="number" id="png-custom-width" min="16" max="10000" step="1" value="3000" />
+        <input type="number" required id="png-custom-width" min="16" max="10000" step="1" value="3000" />
       </label>
       <p class="hint" id="png-size-info"></p>
       <div class="button-row">
         <button type="button" id="btn-save-png">PNGを保存</button>
         <button type="button" id="btn-save-svg">SVGを保存</button>
       </div>
+      <button type="button" class="secondary-btn" id="btn-copy-png" title="Word・PowerPoint などにそのまま貼り付けられます">PNGをクリップボードにコピー</button>
     </fieldset>
   </section>
 
   <section class="preview-area">
     <div id="preview" class="preview-surface" aria-live="polite"></div>
+    <p class="preview-caption" id="preview-caption"></p>
   </section>
 </main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script type="module" src="js/app.js"></script>
 </body>

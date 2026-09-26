@@ -138,6 +138,8 @@ export function buildScene2D(points, closed, style = {}, annotation = null) {
   for (let round = 0; round < 8; round++) {
     fit = computeFit(bbox, s.size, s.margin, pad);
     ann = annotate2D(points, closed, fit.map, options);
+    // Nothing was drawn (e.g. right-angle marks on a figure without a 90° corner).
+    if (!ann.bounds) break;
     const [x0, y0] = fit.map([bbox.minX, bbox.maxY]);
     const [x1, y1] = fit.map([bbox.maxX, bbox.minY]);
     const need = {
