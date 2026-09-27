@@ -16,6 +16,7 @@ js/hidden-line.js      多面体の可視/不可視エッジ判定
 js/ellipse.js          円の投影＝パラメトリック楕円（点・外接矩形・Bézier弧）
 js/curved-solids.js    円柱・円錐の輪郭線（母線）と縁の可視/不可視弧
 js/annotations.js      2D の注釈（頂点名・辺の長さ/寸法線・内角）の値計算と配置
+js/annotations3d.js    3D の寸法（幅・高さ・奥行き/底面の一辺/半径）の値計算と配置
 js/scene-builder.js    上記を組み合わせ、描画用の平面データ（scene）を作る
 js/render-svg.js       scene → SVG文字列
 js/export-png.js       SVG → Canvas → PNG、SVG保存（ブラウザ専用）
@@ -151,8 +152,30 @@ Bézier制御点にもそのまま適用できる）。
   描くときの互換性のため）。`font-family` はシステムフォントのみ
   （`FONT_FAMILY`）。外部 Web フォントは `<img>` 経由の SVG では読み込まれず、
   Canvas を taint しうるため使わない。
-* 3D は未対応。可視の辺にだけ付ける場合は `classifyEdges` の結果と、
-  投影後の外向き方向（凸包の外側）を使う想定。
+## 寸法（3D）
+
+`annotations3d.js` の `polyhedronDimensionItems`（多面体）/
+`curvedDimensionItems`（円柱・円錐）が、投影・`fit.map` 済みの px 座標を
+受け取り、寸法線を scene item として返す。`buildDimensionLine`
+（矢印つき延長線の描画）は 2D の寸法線と共有し、`fitWithPad`（旧
+`buildScene2D` の pad ループを切り出したもの）も 2D/3D で共有する。
+
+* **1辺だけラベル**: `geometry3d.js` の各図形が `dimensions` を返す
+  （直方体は幅/高さ/奥行き、角柱・角錐は底面の一辺＋高さ）。同じ長さの辺が
+  何本もあるため、全部ではなく1本だけに表示する。
+* **見えている辺を選ぶ**: `dimensions[i].edges` はその長さの辺を全部列挙し
+  （例: 直方体の「幅」なら4本）、`polyhedronDimensionItems` が
+  `classifyEdges`（hidden-line.js）の可視/不可視情報を見て、最初に見つかった
+  可視の辺を選ぶ。辺を1本に決め打ちすると、投影によってはその辺が裏に回り、
+  外向きオフセットだけでは寸法線が立体の内部を横切ってしまうため
+  （3D で幾何学的に正しい外向き方向も、2D 投影後に外向きとは限らない）。
+* **実際の辺が無い寸法**: 角錐の高さ（頂点→底面中心）、円柱・円錐の高さ・
+  半径は、立体上に対応する辺が無い。`dim.synthetic = true`（3D 座標を直接
+  指定）として、オフセット0（辺と同じ位置）・破線で描く
+  （教科書の高さ・半径の補助線と同じ、立体の内部を通ってよい表現）。
+* **円柱・円錐**は解析形状で頂点インデックスを持たないため、
+  `geometry3d.js` に `dimensions` を持たせず、`curvedDimensionItems` が
+  `ellipse.js` の `circleBasis` で底面の1点を直接作る。
 
 ## テスト方針
 

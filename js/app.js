@@ -472,6 +472,19 @@ function currentAnnotation() {
   };
 }
 
+/** Dimension options for buildScene3D, or null when the toggle is off. */
+function currentDimensions3D() {
+  if (!$('dim3d-show').checked) return null;
+  const decimals = readNumber($('dim3d-decimals'));
+  const fontSize = readNumber($('dim3d-font-size'));
+  return {
+    show: true,
+    unit: $('dim3d-unit').value.trim(),
+    decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 4 ? decimals : 1,
+    fontSize: fontSize >= 6 && fontSize <= 72 ? fontSize : 18,
+  };
+}
+
 // ---------- 3D ----------
 
 const SHAPE3D_FIELDS = {
@@ -556,10 +569,14 @@ function render() {
   } else {
     const input = compute3DShape();
     if (input) {
-      scene = buildScene3D(input.shape, input.params, input.projection, input.options, {
-        ...style,
-        hiddenLineMode: $('hidden-line-mode').value,
-      });
+      scene = buildScene3D(
+        input.shape,
+        input.params,
+        input.projection,
+        input.options,
+        { ...style, hiddenLineMode: $('hidden-line-mode').value },
+        currentDimensions3D(),
+      );
     }
   }
   current = scene ? { svg: renderSvgString(scene), width: scene.width, height: scene.height } : null;
@@ -629,6 +646,7 @@ function syncVisibility() {
   $('ann-options').hidden = !anyAnnotation;
   $('ann-length-style-field').hidden = !$('ann-lengths').checked;
   $('ann-unit-field').hidden = !$('ann-lengths').checked;
+  $('dim3d-options').hidden = !$('dim3d-show').checked;
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
   syncChips();
   syncSliders();
