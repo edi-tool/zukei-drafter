@@ -23,11 +23,24 @@ export function box({ width, height, depth }) {
     [2, 6, 7, 3], // +Z
     [3, 7, 4, 0], // -X
   ];
-  return { vertices, edges: facesToEdges(faces), faces };
+  // One label per axis, for the "dimensions" annotation (labels one edge
+  // instead of every edge that shares a length). `edges` lists every edge of
+  // that length so the renderer, which knows which edges the current
+  // viewing angle hides, can pick one that is actually visible.
+  const dimensions = [
+    { edges: [[0, 1], [3, 2], [4, 5], [7, 6]], label: '幅', value: width },
+    { edges: [[1, 2], [0, 3], [5, 6], [4, 7]], label: '奥行き', value: depth },
+    { edges: [[0, 4], [1, 5], [2, 6], [3, 7]], label: '高さ', value: height },
+  ];
+  return { vertices, edges: facesToEdges(faces), faces, dimensions };
 }
 
 export function cube({ size }) {
-  return box({ width: size, height: size, depth: size });
+  const shape = box({ width: size, height: size, depth: size });
+  // All three axes are equal on a cube; one label (on a vertical edge,
+  // reliably visible) is enough.
+  shape.dimensions = [{ edges: [[0, 4], [1, 5], [2, 6], [3, 7]], label: '一辺', value: size }];
+  return shape;
 }
 
 // Regular n-gon in the x-z plane with one edge facing -Z (the front in
@@ -54,11 +67,24 @@ export function prism({ sides, radius, height }) {
     const ni = (i + 1) % sides;
     faces.push([i, i + sides, ni + sides, ni]);
   }
-  return { vertices, edges: facesToEdges(faces), faces };
+  // Every base edge (both the bottom and top n-gon) has the same length,
+  // and every vertical edge has the same length; list every one of each so
+  // the renderer can pick one that the current viewing angle doesn't hide.
+  const baseEdgeLength = 2 * radius * Math.sin(Math.PI / sides);
+  const baseEdges = indices.map((i) => [i, (i + 1) % sides]);
+  const topEdges = indices.map((i) => [i + sides, ((i + 1) % sides) + sides]);
+  const verticalEdges = indices.map((i) => [i, i + sides]);
+  const dimensions = [
+    { edges: [...baseEdges, ...topEdges], label: '底面の一辺', value: baseEdgeLength },
+    { edges: verticalEdges, label: '高さ', value: height },
+  ];
+  return { vertices, edges: facesToEdges(faces), faces, dimensions };
 }
 
 export function triangularPrism({ sideLength, height }) {
-  return prism({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
+  const shape = prism({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
+  shape.dimensions[0].value = sideLength; // exact input value, not the radius round-trip
+  return shape;
 }
 
 export function quadrangularPrism({ width, depth, height }) {
@@ -73,15 +99,28 @@ export function pyramid({ sides, radius, height }) {
   for (let i = 0; i < sides; i++) {
     faces.push([i, apex, (i + 1) % sides]);
   }
-  return { vertices, edges: facesToEdges(faces), faces };
+  const baseEdgeLength = 2 * radius * Math.sin(Math.PI / sides);
+  const baseEdges = [...Array(sides).keys()].map((i) => [i, (i + 1) % sides]);
+  const dimensions = [
+    { edges: baseEdges, label: '底面の一辺', value: baseEdgeLength },
+    // The apex sits above the base centroid, not above any base vertex, so
+    // there is no physical edge for the height: a synthetic vertical segment
+    // (apex straight down to the base plane) stands in for it, drawn dashed.
+    { from: vertices[apex], to: v(0, 0, 0), label: '高さ', value: height, synthetic: true },
+  ];
+  return { vertices, edges: facesToEdges(faces), faces, dimensions };
 }
 
 export function triangularPyramid({ sideLength, height }) {
-  return pyramid({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
+  const shape = pyramid({ sides: 3, radius: sideLength / (2 * Math.sin(Math.PI / 3)), height });
+  shape.dimensions[0].value = sideLength;
+  return shape;
 }
 
 export function quadrangularPyramid({ baseWidth, height }) {
-  return pyramid({ sides: 4, radius: baseWidth / Math.SQRT2, height });
+  const shape = pyramid({ sides: 4, radius: baseWidth / Math.SQRT2, height });
+  shape.dimensions[0].value = baseWidth;
+  return shape;
 }
 
 /**

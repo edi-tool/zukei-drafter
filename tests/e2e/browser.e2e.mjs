@@ -289,6 +289,30 @@ try {
     }
   });
 
+  await check('3D dimensions: off by default, on adds labels and stays error-free for every shape/projection', async () => {
+    await choose('shape3d-type', 'box');
+    await choose('projection-type', 'isometric');
+    assert.equal(await count('text'), 0, 'off by default');
+
+    await page.check('#dim3d-show');
+    assert.equal(await page.locator('#dim3d-options').isVisible(), true);
+    const texts = await page.$$eval('#preview text', (els) => els.map((el) => el.textContent));
+    assert.deepEqual(texts.sort(), ['幅 80', '奥行き 40', '高さ 50'].sort());
+
+    const shapes = await page.$$eval('#shape3d-type option', (opts) => opts.map((o) => o.value));
+    for (const shape of shapes) {
+      await choose('shape3d-type', shape);
+      for (const projection of projections) {
+        await choose('projection-type', projection);
+        assert.ok((await count('text')) > 0, `${shape}/${projection} has no dimension labels`);
+        assert.ok(!(await preview()).includes('NaN'), `${shape}/${projection} has NaN`);
+      }
+    }
+
+    await page.uncheck('#dim3d-show');
+    assert.equal(await count('text'), 0);
+  });
+
   await check('3D cylinder: hidden back arc is dashed or omitted per setting', async () => {
     await choose('shape3d-type', 'cylinder');
     await choose('projection-type', 'cabinet');
@@ -402,12 +426,15 @@ try {
     await page.click('.mode-btn[data-mode="3d"]');
     await choose('shape3d-type', 'cylinder');
     await set('.shape3d-field[data-key="radius"]', 12);
+    await page.check('#dim3d-show');
     await page.waitForURL(/d\.radius=12/);
+    assert.match(page.url(), /dim3d-show=1/);
     await page.reload();
     await page.waitForSelector('#preview svg');
     assert.equal(await page.locator('#panel-3d').isVisible(), true);
     assert.equal(await page.inputValue('#shape3d-type'), 'cylinder');
     assert.equal(await page.inputValue('.shape3d-field[data-key="radius"]'), '12');
+    assert.ok(await page.locator('#dim3d-show').isChecked());
     page.once('dialog', (d) => d.accept());
     await page.click('#btn-reset');
     assert.equal(await page.locator('#panel-2d').isVisible(), true);

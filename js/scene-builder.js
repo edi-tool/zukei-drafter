@@ -12,6 +12,7 @@ import { classifyEdges } from './hidden-line.js';
 import { ellipseBBox, ellipseArcBeziers, ellipsePoint } from './ellipse.js';
 import { cylinderOutline, coneOutline } from './curved-solids.js';
 import { annotate2D, hasAnnotations } from './annotations.js';
+import { polyhedronDimensionItems, curvedDimensionItems, hasDimensions3D } from './annotations3d.js';
 
 const DEFAULT_SIZE = 800;
 
@@ -115,29 +116,21 @@ function shapeItem2D(mapped, closed, s) {
 }
 
 /**
- * Scene for a flat 2D shape; an open (non-closing) path is drawn as a polyline.
- * With `annotation` options (see annotations.js) labels / dimension lines are
- * drawn above the shape and the fit reserves room for them; without any
- * annotation enabled the output is exactly the plain figure.
+ * Fits `bbox` into `size`/`margin`, growing the pad reserved for annotations
+ * (computed by `computeAnnotation(fit)`, returning `{items, bounds}`) each
+ * round until they no longer overflow it. Labels have a fixed px size, so how
+ * far they stick out beyond the figure barely depends on the scale: a few
+ * rounds of "fit, lay out, measure the overhang, pad by it" settle. Padding
+ * only grows, so this terminates. Shared by the 2D and 3D annotation layouts.
+ * @param {(fit: ReturnType<typeof computeFit>) => {items: object[], bounds: object|null}} computeAnnotation
  */
-export function buildScene2D(points, closed, style = {}, annotation = null) {
-  const s = { ...DEFAULT_STYLE, ...style };
-  const bbox = bboxOfPoints(points);
-  if (!hasAnnotations(annotation)) {
-    const fit = computeFit(bbox, s.size, s.margin);
-    return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s)]);
-  }
-
-  // Labels have a fixed px size, so how far they stick out beyond the figure
-  // barely depends on the scale: a few rounds of "fit, lay out, measure the
-  // overhang, pad by it" settle. Padding only grows, so this terminates.
-  const options = { ...annotation, color: s.stroke, strokeWidth: s.strokeWidth };
+function fitWithPad(bbox, size, margin, computeAnnotation) {
   let pad = { left: 0, right: 0, top: 0, bottom: 0 };
   let fit;
   let ann;
   for (let round = 0; round < 8; round++) {
-    fit = computeFit(bbox, s.size, s.margin, pad);
-    ann = annotate2D(points, closed, fit.map, options);
+    fit = computeFit(bbox, size, margin, pad);
+    ann = computeAnnotation(fit);
     // Nothing was drawn (e.g. right-angle marks on a figure without a 90° corner).
     if (!ann.bounds) break;
     const [x0, y0] = fit.map([bbox.minX, bbox.maxY]);
@@ -151,6 +144,24 @@ export function buildScene2D(points, closed, style = {}, annotation = null) {
     if (Object.keys(need).every((k) => need[k] <= pad[k] + 0.01)) break;
     for (const k of Object.keys(pad)) pad[k] = Math.max(pad[k], Math.ceil(need[k]));
   }
+  return { fit, ann };
+}
+
+/**
+ * Scene for a flat 2D shape; an open (non-closing) path is drawn as a polyline.
+ * With `annotation` options (see annotations.js) labels / dimension lines are
+ * drawn above the shape and the fit reserves room for them; without any
+ * annotation enabled the output is exactly the plain figure.
+ */
+export function buildScene2D(points, closed, style = {}, annotation = null) {
+  const s = { ...DEFAULT_STYLE, ...style };
+  const bbox = bboxOfPoints(points);
+  if (!hasAnnotations(annotation)) {
+    const fit = computeFit(bbox, s.size, s.margin);
+    return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s)]);
+  }
+  const options = { ...annotation, color: s.stroke, strokeWidth: s.strokeWidth };
+  const { fit, ann } = fitWithPad(bbox, s.size, s.margin, (fit) => annotate2D(points, closed, fit.map, options));
   return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s), ...ann.items]);
 }
 
@@ -171,8 +182,10 @@ const SHAPE_FACTORIES = {
  * @param {string} projectionName 'isometric' | 'cavalier' | 'cabinet' | 'oblique'
  * @param {object} projectionOptions e.g. { angleDeg, scale }
  * @param {{hiddenLineMode?: 'dashed'|'hidden'}} style plus stroke/fill/size options
+ * @param {object|null} dimensions annotations3d.js options ({ show, unit, decimals, fontSize });
+ *   omitted or `{ show: false }` draws exactly the plain figure
  */
-export function buildScene3D(shapeName, shapeParams, projectionName, projectionOptions = {}, style = {}) {
+export function buildScene3D(shapeName, shapeParams, projectionName, projectionOptions = {}, style = {}, dimensions = null) {
   const factory = SHAPE_FACTORIES[shapeName];
   if (!factory) throw new RangeError(`unknown 3D shape: ${shapeName}`);
   const shape = factory(shapeParams);
@@ -182,15 +195,29 @@ export function buildScene3D(shapeName, shapeParams, projectionName, projectionO
 
   if (shape.kind === 'cylinder' || shape.kind === 'cone') {
     const outline = shape.kind === 'cylinder' ? cylinderOutline(shape, matrix, viewDir) : coneOutline(shape, matrix, viewDir);
-    return buildCurvedScene(outline, s);
+    return buildCurvedScene(outline, s, shape, matrix, dimensions);
   }
-  return buildPolyhedronScene(shape, matrix, viewDir, s);
+  return buildPolyhedronScene(shape, matrix, viewDir, s, dimensions);
 }
 
-function buildPolyhedronScene(shape, matrix, viewDir, s) {
+function buildPolyhedronScene(shape, matrix, viewDir, s, dimensions) {
   const projected = shape.vertices.map((p) => applyMatrix(matrix, p));
   const { hidden } = classifyEdges(shape.vertices, shape.faces, shape.edges, viewDir);
-  const fit = computeFit(bboxOfPoints(projected), s.size, s.margin);
+  const bbox = bboxOfPoints(projected);
+  const project = (fit) => (v3d) => fit.map(applyMatrix(matrix, v3d));
+
+  let fit;
+  let dimItems = [];
+  if (hasDimensions3D(dimensions)) {
+    const dimOptions = { ...dimensions, color: s.stroke, strokeWidth: s.strokeWidth };
+    const result = fitWithPad(bbox, s.size, s.margin, (fit) =>
+      polyhedronDimensionItems(shape, projected.map(fit.map), project(fit), hidden, dimOptions),
+    );
+    fit = result.fit;
+    dimItems = result.ann.items;
+  } else {
+    fit = computeFit(bbox, s.size, s.margin);
+  }
   const mapped = projected.map(fit.map);
 
   const hiddenItems = [];
@@ -201,7 +228,7 @@ function buildPolyhedronScene(shape, matrix, viewDir, s) {
     const line = { type: 'line', points: [mapped[edge.a], mapped[edge.b]], ...strokeStyle(s, isHidden) };
     (isHidden ? hiddenItems : visibleItems).push(line);
   }
-  return scene(fit, s, [...fillItem(s, convexHull(mapped)), ...hiddenItems, ...visibleItems]);
+  return scene(fit, s, [...fillItem(s, convexHull(mapped)), ...hiddenItems, ...visibleItems, ...dimItems]);
 }
 
 function arcPath(ellipse, arc, map) {
@@ -214,10 +241,21 @@ function arcPath(ellipse, arc, map) {
   return d;
 }
 
-function buildCurvedScene(outline, s) {
+function buildCurvedScene(outline, s, shape, matrix, dimensions) {
   let bbox = bboxOfPoints(outline.extraPoints.length ? outline.extraPoints : [outline.rims[0].ellipse.center]);
   for (const rim of outline.rims) bbox = unionBBox(bbox, ellipseBBox(rim.ellipse));
-  const fit = computeFit(bbox, s.size, s.margin);
+  const project = (fit) => (v3d) => fit.map(applyMatrix(matrix, v3d));
+
+  let fit;
+  let dimItems = [];
+  if (hasDimensions3D(dimensions)) {
+    const dimOptions = { ...dimensions, color: s.stroke, strokeWidth: s.strokeWidth };
+    const result = fitWithPad(bbox, s.size, s.margin, (fit) => curvedDimensionItems(shape.kind, shape, project(fit), dimOptions));
+    fit = result.fit;
+    dimItems = result.ann.items;
+  } else {
+    fit = computeFit(bbox, s.size, s.margin);
+  }
 
   const samples = [...outline.extraPoints];
   for (const rim of outline.rims) {
@@ -237,5 +275,5 @@ function buildCurvedScene(outline, s) {
   for (const [p, q] of outline.silhouettes) {
     visibleItems.push({ type: 'line', points: [fit.map(p), fit.map(q)], ...strokeStyle(s, false) });
   }
-  return scene(fit, s, [...fillItem(s, convexHull(samples.map(fit.map))), ...hiddenItems, ...visibleItems]);
+  return scene(fit, s, [...fillItem(s, convexHull(samples.map(fit.map))), ...hiddenItems, ...visibleItems, ...dimItems]);
 }

@@ -222,6 +222,23 @@
           <option value="hidden">表示しない</option>
         </select>
       </div>
+
+      <fieldset class="shape-fieldset">
+        <legend>寸法</legend>
+        <label class="check-field"><input type="checkbox" id="dim3d-show" /> 幅・高さ・奥行きなどを表示</label>
+        <p class="hint">同じ長さの辺が多いので、見えている辺1本だけに表示します（角錐・円柱・円錐の高さと半径は補助線）。</p>
+        <div id="dim3d-options" hidden>
+          <label class="field"><span>単位（例: cm、空欄可）</span>
+            <input type="text" id="dim3d-unit" maxlength="8" value="" />
+          </label>
+          <label class="field"><span>小数点以下の桁数 (0〜4)</span>
+            <input type="number" required id="dim3d-decimals" min="0" max="4" step="1" value="1" />
+          </label>
+          <label class="field"><span>文字サイズ (px、長辺800基準)</span>
+            <input type="number" required id="dim3d-font-size" data-slider="8,48,1" min="6" max="72" step="1" value="18" />
+          </label>
+        </div>
+      </fieldset>
     </div>
 
     <fieldset class="shape-fieldset">

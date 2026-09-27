@@ -100,6 +100,33 @@ test('buildScene3D: cone = visible/hidden base arcs + 2 generators; "hidden" mod
   assertInsideWithMargin(dashed);
 });
 
+test('buildScene3D: dimensions off (omitted, or {show:false}) is exactly the plain figure', () => {
+  const plain = buildScene3D('box', { width: 80, height: 50, depth: 40 }, 'isometric', {}, {});
+  const explicitOff = buildScene3D('box', { width: 80, height: 50, depth: 40 }, 'isometric', {}, {}, { show: false });
+  assert.deepEqual(explicitOff, plain);
+});
+
+test('buildScene3D: dimensions on adds text labels and keeps them inside the margin', () => {
+  const scene = buildScene3D('box', { width: 80, height: 50, depth: 40 }, 'isometric', {}, {}, { show: true, unit: 'cm' });
+  const texts = scene.items.filter((it) => it.type === 'text').map((it) => it.text).sort();
+  assert.deepEqual(texts, ['幅 80cm', '奥行き 40cm', '高さ 50cm'].sort());
+  assertInsideWithMargin(scene);
+});
+
+test('buildScene3D: a pyramid\'s dimensions include a dashed height line (no matching edge)', () => {
+  const scene = buildScene3D('triangularPyramid', { sideLength: 60, height: 70 }, 'cavalier', {}, {}, { show: true });
+  assert.ok(scene.items.some((it) => it.type === 'text' && it.text.startsWith('高さ')));
+  assertInsideWithMargin(scene);
+});
+
+test('buildScene3D: a cylinder\'s dimensions label radius and height', () => {
+  const scene = buildScene3D('cylinder', { radius: 30, height: 70 }, 'oblique', { angleDeg: 30, scale: 0.6 }, {}, { show: true });
+  const texts = scene.items.filter((it) => it.type === 'text').map((it) => it.text);
+  assert.ok(texts.some((t) => t.startsWith('半径')));
+  assert.ok(texts.some((t) => t.startsWith('高さ')));
+  assertInsideWithMargin(scene);
+});
+
 test('buildScene2D: right-angle marks on a figure without a 90° corner draw nothing and do not throw', () => {
   const { points } = regularPolygon({ sides: 6, sideLength: 40 });
   const plain = buildScene2D(points, true, {}, null);

@@ -100,8 +100,36 @@ export function signedArea(points) {
 }
 
 /** Support of an axis-aligned box of half-size (hw, hh) in direction d. */
-function support(hw, hh, d) {
+export function support(hw, hh, d) {
   return hw * Math.abs(d[0]) + hh * Math.abs(d[1]);
+}
+
+/**
+ * A textbook-style dimension line for the segment p-q: short extension lines
+ * standing off the segment by `offset` along `outward`, a line between their
+ * ends with an arrowhead at each end, pointing in from the extension lines.
+ * Shared by annotate2D (`lengths: 'dimension'`) and annotations3d.js.
+ * @returns {{lines: [number[],number[]][], arrows: object[], p2: number[], q2: number[]}}
+ */
+export function buildDimensionLine(p, q, outward, offset, color, fontSize) {
+  const u = unit(sub(q, p));
+  const extGap = 3;
+  const overshoot = 3;
+  const p2 = add(p, mul(outward, offset));
+  const q2 = add(q, mul(outward, offset));
+  const lines = [
+    [add(p, mul(outward, extGap)), add(p, mul(outward, offset + overshoot))],
+    [add(q, mul(outward, extGap)), add(q, mul(outward, offset + overshoot))],
+    [p2, q2],
+  ];
+  const al = Math.max(6, fontSize * 0.45);
+  const aw = al * 0.35;
+  const arrows = [[p2, u], [q2, mul(u, -1)]].map(([tip, dir]) => {
+    const base = add(tip, mul(dir, al));
+    const side = mul([-dir[1], dir[0]], aw);
+    return { type: 'polygon', points: [tip, add(base, side), sub(base, side)], stroke: 'none', strokeWidth: 0, fill: color };
+  });
+  return { lines, arrows, p2, q2 };
 }
 
 /**
@@ -176,7 +204,7 @@ export function pointInPolygon([x, y], polygon) {
   return inside;
 }
 
-function textItem(center, text, o) {
+export function textItem(center, text, o) {
   return {
     type: 'text',
     x: center[0],
@@ -313,20 +341,9 @@ export function annotate2D(points, closed, map, options = {}) {
       const length = Math.hypot(points[j][0] - points[i][0], points[j][1] - points[i][1]);
       edges.push({ p, q, u, outward, text: formatNumber(length, o.decimals) + o.unit });
       if (o.lengths === 'dimension') {
-        const extGap = 3;
-        const overshoot = 3;
-        const p2 = add(p, mul(outward, dimOffset));
-        const q2 = add(q, mul(outward, dimOffset));
-        addLine(add(p, mul(outward, extGap)), add(p, mul(outward, dimOffset + overshoot)));
-        addLine(add(q, mul(outward, extGap)), add(q, mul(outward, dimOffset + overshoot)));
-        addLine(p2, q2);
-        const al = Math.max(6, o.fontSize * 0.45);
-        const aw = al * 0.35;
-        for (const [tip, dir] of [[p2, u], [q2, mul(u, -1)]]) {
-          const base = add(tip, mul(dir, al));
-          const side = mul([-dir[1], dir[0]], aw);
-          lineItems.push({ type: 'polygon', points: [tip, add(base, side), sub(base, side)], stroke: 'none', strokeWidth: 0, fill: o.color });
-        }
+        const { lines, arrows } = buildDimensionLine(p, q, outward, dimOffset, o.color, o.fontSize);
+        for (const [a, b] of lines) addLine(a, b);
+        lineItems.push(...arrows);
       }
     }
   }
