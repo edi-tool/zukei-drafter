@@ -130,13 +130,15 @@ function buildSliders() {
     const pair = document.createElement('div');
     pair.className = 'slider-pair';
     input.before(pair);
-    pair.append(range, input);
+    // The number comes first in the DOM so the surrounding <label> names it (a
+    // label targets its first labelable descendant); CSS puts the slider on the left.
+    pair.append(input, range);
   }
 }
 
 function syncSliders() {
   for (const range of document.querySelectorAll('.slider-pair .slider')) {
-    const value = readNumber(range.nextElementSibling);
+    const value = readNumber(range.previousElementSibling);
     if (Number.isFinite(value)) range.value = value;
   }
 }
@@ -167,8 +169,12 @@ function addStepper(input) {
     b.type = 'button';
     b.className = 'stepper-btn';
     b.textContent = direction > 0 ? '+' : '−';
-    b.setAttribute('aria-label', `${name}を${direction > 0 ? '増やす' : '減らす'}`);
-    b.tabIndex = -1; // keyboard users have the arrow keys in the number field itself
+    b.title = `${name}を${direction > 0 ? '増やす' : '減らす'}`;
+    // A pointer shortcut only, like the sliders: keyboard and screen-reader users
+    // use the number field itself (arrow keys), and hiding the buttons keeps
+    // them out of the field's accessible name.
+    b.tabIndex = -1;
+    b.setAttribute('aria-hidden', 'true');
     let timer = 0;
     const stop = () => clearTimeout(timer);
     const repeat = (delay) => {
@@ -182,14 +188,13 @@ function addStepper(input) {
     });
     for (const type of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(type, stop);
     b.addEventListener('contextmenu', (event) => event.preventDefault()); // long press = repeat, not a menu
-    // Screen-reader activation arrives as a click with detail 0 (no pointer events).
-    b.addEventListener('click', (event) => {
-      if (event.detail === 0 && !input.readOnly) nudge(input, direction);
-    });
     return b;
   };
   input.before(wrap);
-  wrap.append(button(-1), input, button(1));
+  // Input first, as in buildSliders, so the <label> clicks focus it instead of pressing −.
+  const minus = button(-1);
+  minus.classList.add('stepper-minus');
+  wrap.append(input, minus, button(1));
 }
 
 function buildSteppers(root = document) {

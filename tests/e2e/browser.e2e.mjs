@@ -424,7 +424,7 @@ try {
   await check('input aids: slider drives the number, triangle readout, auto-close last edge', async () => {
     await page.click('.mode-btn[data-mode="2d"]');
     await choose('shape2d-type', 'regular');
-    const slider = page.locator('#regular-sides').locator('xpath=preceding-sibling::input[@type="range"]');
+    const slider = page.locator('#regular-sides').locator('xpath=following-sibling::input[@type="range"]');
     await slider.fill('8');
     assert.equal(await page.inputValue('#regular-sides'), '8');
     assert.match(await page.locator('#preview-caption').innerText(), /正8角形/);
@@ -453,14 +453,20 @@ try {
   await check('touch aids: −/+ steppers nudge and clamp, export settings live in the URL', async () => {
     await choose('shape2d-type', 'regular');
     await set('#regular-side-length', 40);
-    await page.click('.stepper-btn[aria-label="一辺の長さを増やす"]');
+    await page.click('.stepper-btn[title="一辺の長さを増やす"]');
     assert.equal(await page.inputValue('#regular-side-length'), '41');
+    await page.click('#fieldset-regular label:has(#regular-side-length) > span');
+    assert.equal(await page.inputValue('#regular-side-length'), '41', 'clicking the label text must not press −');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'regular-side-length', 'label focuses the number field');
+    for (const [label, id] of [['一辺の長さ', 'regular-side-length'], ['頂点数 (3〜20)', 'regular-sides'], ['回転角 (度、0で底辺が水平)', 'regular-rotation']]) {
+      assert.equal(await page.getByRole('spinbutton', { name: label, exact: true }).getAttribute('id'), id, `"${label}" names its number field`);
+    }
     await set('#regular-side-length', 0.5);
-    await page.click('.stepper-btn[aria-label="一辺の長さを減らす"]');
+    await page.click('.stepper-btn[title="一辺の長さを減らす"]');
     assert.equal(await page.inputValue('#regular-side-length'), '0.01', 'clamped to min');
     await choose('shape2d-type', 'general');
     await set('#general-count', 4);
-    await page.click('.stepper-btn[aria-label="頂点数を増やす"]');
+    await page.click('.stepper-btn[title="頂点数を増やす"]');
     assert.equal(await page.locator('.general-length').count(), 5, 'stepper rebuilds the edge rows');
 
     await choose('png-background', 'white');
