@@ -6,14 +6,14 @@
 <meta name="theme-color" content="#f8f6f2" />
 
 <title>図形の作成 | 図形作成さん</title>
-<meta name="description" content="教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
+<meta name="description" content="教材・プリント用の2D・3D図形や展開図を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://edi-tool.github.io/zukei-drafter/">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="edi-tool">
 <meta property="og:title" content="図形の作成 | 図形作成さん">
-<meta property="og:description" content="教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
+<meta property="og:description" content="教材・プリント用の2D・3D図形や展開図を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。ファイルは外部送信しません。">
 <meta property="og:url" content="https://edi-tool.github.io/zukei-drafter/">
 <meta property="og:image" content="https://edi-tool.github.io/zukei-drafter/ogp.png">
 <meta property="og:image:width" content="1200">
@@ -31,7 +31,7 @@
       "@type": "WebApplication",
       "name": "図形作成さん",
       "url": "https://edi-tool.github.io/zukei-drafter/",
-      "description": "教材・プリント用の2D・3D図形を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。",
+      "description": "教材・プリント用の2D・3D図形や展開図を数値入力から生成し、高解像度PNGやSVGとして保存できるブラウザ完結の無料ツール。",
       "applicationCategory": "DesignApplication",
       "operatingSystem": "Any",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
@@ -63,6 +63,7 @@
   <div class="mode-switch" role="tablist" aria-label="モード切替">
     <button type="button" class="mode-btn active" data-mode="2d" role="tab" aria-selected="true">2次元</button>
     <button type="button" class="mode-btn" data-mode="3d" role="tab" aria-selected="false">3次元</button>
+    <button type="button" class="mode-btn" data-mode="net" role="tab" aria-selected="false">展開図</button>
   </div>
 </header>
 
@@ -76,6 +77,11 @@
         <select id="shape2d-type" hidden>
           <option value="regular">正多角形</option>
           <option value="triangle">三角形</option>
+          <option value="rectangle">長方形</option>
+          <option value="parallelogram">平行四辺形</option>
+          <option value="trapezoid">台形</option>
+          <option value="circle">円</option>
+          <option value="sector">おうぎ形</option>
           <option value="general">一般多角形</option>
         </select>
       </div>
@@ -131,6 +137,47 @@
         <p class="error-message" id="triangle-error"></p>
       </fieldset>
 
+      <fieldset id="fieldset-rectangle" class="shape-fieldset" hidden>
+        <legend>長方形</legend>
+        <label class="field"><span>横の長さ</span><input type="number" required id="rect-width" min="0.01" step="0.1" value="60" /></label>
+        <label class="field"><span>縦の長さ</span><input type="number" required id="rect-height" min="0.01" step="0.1" value="40" /></label>
+        <p class="hint">正方形は「正多角形」の頂点数 4 で作れます。</p>
+        <p class="error-message" id="rectangle-error"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-parallelogram" class="shape-fieldset" hidden>
+        <legend>平行四辺形</legend>
+        <label class="field"><span>底辺 AB</span><input type="number" required id="para-base" min="0.01" step="0.1" value="60" /></label>
+        <label class="field"><span>となりの辺 AD</span><input type="number" required id="para-side" min="0.01" step="0.1" value="40" /></label>
+        <label class="field"><span>間の角 A (度)</span><input type="number" required id="para-angle" data-slider="1,179,1" min="0.01" max="179.99" step="0.1" value="60" /></label>
+        <p class="hint">角 A を 90° にすると長方形、AB と AD を同じ長さにするとひし形になります。</p>
+        <p class="error-message" id="parallelogram-error"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-trapezoid" class="shape-fieldset" hidden>
+        <legend>台形</legend>
+        <label class="field"><span>下底</span><input type="number" required id="trap-bottom" min="0.01" step="0.1" value="80" /></label>
+        <label class="field"><span>上底</span><input type="number" required id="trap-top" min="0.01" step="0.1" value="40" /></label>
+        <label class="field"><span>高さ</span><input type="number" required id="trap-height" min="0.01" step="0.1" value="40" /></label>
+        <label class="field"><span>上底のずれ（下底の左端から右へ）</span><input type="number" required id="trap-offset" step="0.1" value="15" /></label>
+        <p class="hint">ずれを 0 にすると直角のある台形、(下底 − 上底) ÷ 2 にすると等脚台形になります。</p>
+        <p class="error-message" id="trapezoid-error"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-circle" class="shape-fieldset" hidden>
+        <legend>円</legend>
+        <label class="field"><span>半径</span><input type="number" required id="circle-radius" min="0.01" step="0.1" value="40" /></label>
+        <p class="hint">「辺の長さ」で半径、「頂点名」で中心 O を表示します。</p>
+        <p class="error-message" id="circle-error"></p>
+      </fieldset>
+
+      <fieldset id="fieldset-sector" class="shape-fieldset" hidden>
+        <legend>おうぎ形</legend>
+        <label class="field"><span>半径</span><input type="number" required id="sector-radius" min="0.01" step="0.1" value="50" /></label>
+        <label class="field"><span>中心角 (度)</span><input type="number" required id="sector-angle" data-slider="1,359,1" min="0.01" max="359.99" step="0.1" value="120" /></label>
+        <p class="error-message" id="sector-error"></p>
+      </fieldset>
+
       <fieldset id="fieldset-general" class="shape-fieldset" hidden>
         <legend>一般多角形</legend>
         <label class="field"><span>頂点数</span>
@@ -146,8 +193,9 @@
         <legend>寸法・注釈</legend>
         <label class="check-field"><input type="checkbox" id="ann-vertex-names" /> 頂点名（A, B, C…）</label>
         <label class="check-field"><input type="checkbox" id="ann-lengths" /> 辺の長さ</label>
-        <label class="check-field"><input type="checkbox" id="ann-angles" /> 角度（内角）</label>
-        <div class="field"><span id="ann-right-angles-label">直角記号</span>
+        <label class="check-field" id="ann-angles-field"><input type="checkbox" id="ann-angles" /> 角度（内角）</label>
+        <label class="check-field" id="ann-equal-marks-field"><input type="checkbox" id="ann-equal-marks" /> 等しい長さの辺に印（等長記号）</label>
+        <div class="field" id="ann-right-angles-field"><span id="ann-right-angles-label">直角記号</span>
           <div class="chips" data-for="ann-right-angles" aria-labelledby="ann-right-angles-label"></div>
           <select id="ann-right-angles" hidden>
             <option value="hidden">表示しない</option>
@@ -241,6 +289,61 @@
       </fieldset>
     </div>
 
+    <!-- Net panel -->
+    <div class="mode-panel" id="panel-net" hidden>
+      <div class="field">
+        <span id="net-type-label">展開図</span>
+        <div class="chips chips-icons" data-for="net-type" aria-labelledby="net-type-label"></div>
+        <select id="net-type" hidden>
+          <option value="netCube">立方体</option>
+          <option value="netBox">直方体</option>
+          <option value="netCylinder">円柱</option>
+          <option value="netCone">円錐</option>
+        </select>
+      </div>
+      <div id="net-params"></div>
+      <p class="error-message" id="net-error"></p>
+
+      <div class="field" id="net-fold-field"><span id="net-fold-label">折り目の線</span>
+        <div class="chips" data-for="net-fold" aria-labelledby="net-fold-label"></div>
+        <select id="net-fold" hidden>
+          <option value="solid">実線</option>
+          <option value="dashed">破線</option>
+        </select>
+      </div>
+      <div class="field" id="net-pi-field"><span id="net-pi-label">円周率</span>
+        <div class="chips" data-for="net-pi" aria-labelledby="net-pi-label"></div>
+        <select id="net-pi" hidden>
+          <option value="3.14">3.14</option>
+          <option value="pi">π（3.14159…）</option>
+        </select>
+      </div>
+
+      <fieldset class="shape-fieldset">
+        <legend>寸法</legend>
+        <label class="check-field"><input type="checkbox" id="netdim-show" /> 長さを表示</label>
+        <p class="hint" id="net-dim-hint"></p>
+        <div id="netdim-options" hidden>
+          <div class="field"><span id="netdim-style-label">長さの表示</span>
+            <div class="chips" data-for="netdim-style" aria-labelledby="netdim-style-label"></div>
+            <select id="netdim-style" hidden>
+              <option value="label">数値のみ</option>
+              <option value="dimension">寸法線</option>
+            </select>
+          </div>
+          <label class="field"><span>単位（例: cm、空欄可）</span>
+            <input type="text" id="netdim-unit" maxlength="8" value="" />
+          </label>
+          <label class="field"><span>小数点以下の桁数 (0〜4)</span>
+            <input type="number" required id="netdim-decimals" min="0" max="4" step="1" value="1" />
+          </label>
+          <label class="field"><span>文字サイズ (px、長辺800基準)</span>
+            <input type="number" required id="netdim-font-size" data-slider="8,48,1" min="6" max="72" step="1" value="18" />
+          </label>
+        </div>
+      </fieldset>
+    </div>
+
     <fieldset class="shape-fieldset">
       <legend>線・塗りの設定</legend>
       <label class="field"><span>線幅</span><input type="number" required id="style-stroke-width" data-slider="0.5,8,0.5" min="0.5" step="0.5" value="2" /></label>
@@ -251,6 +354,7 @@
           <select id="style-fill-mode" hidden>
             <option value="none">なし</option>
             <option value="white">白</option>
+            <option value="hatch">斜線</option>
             <option value="custom">色</option>
           </select>
         </div>

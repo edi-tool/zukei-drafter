@@ -179,3 +179,79 @@ export function triangleMeasures([A, B, C]) {
     angles: { A: angleAt(A, B, C), B: angleAt(B, C, A), C: angleAt(C, A, B) },
   };
 }
+
+/**
+ * Rectangle with its bottom edge on the x-axis: A(0,0), B(w,0), C(w,h), D(0,h).
+ */
+export function rectangle({ width, height }) {
+  if (!(width > 0 && height > 0)) {
+    return { ok: false, reason: '縦・横の長さは正の数である必要があります。' };
+  }
+  return { ok: true, points: [[0, 0], [width, 0], [width, height], [0, height]] };
+}
+
+/**
+ * Parallelogram from its base, the adjacent side and the angle between them
+ * (at vertex A, on the left end of the horizontal base).
+ */
+export function parallelogram({ base, side, angleDeg }) {
+  if (!(base > 0 && side > 0)) {
+    return { ok: false, reason: '辺の長さは正の数である必要があります。' };
+  }
+  if (!(angleDeg > 0 && angleDeg < 180)) {
+    return { ok: false, reason: '角度は 0°〜180° の範囲で指定してください。' };
+  }
+  const rad = deg2rad(angleDeg);
+  const [dx, dy] = [side * Math.cos(rad), side * Math.sin(rad)];
+  return { ok: true, points: [[0, 0], [base, 0], [base + dx, dy], [dx, dy]] };
+}
+
+/**
+ * Trapezoid with a horizontal lower base and a parallel upper base `height`
+ * above it. `offset` is how far the upper base's left end sits to the right of
+ * the lower base's left end (negative = to the left, 0 = a right trapezoid).
+ */
+export function trapezoid({ bottom, top, height, offset }) {
+  if (!(bottom > 0 && top > 0 && height > 0)) {
+    return { ok: false, reason: '上底・下底・高さは正の数である必要があります。' };
+  }
+  if (!Number.isFinite(offset)) {
+    return { ok: false, reason: '上底のずれは数値で入力してください。' };
+  }
+  return { ok: true, points: [[0, 0], [bottom, 0], [offset + top, height], [offset, height]] };
+}
+
+/**
+ * Sector (fan shape) of `radius` with central angle `angleDeg`, symmetric
+ * about the vertical axis with the arc on top. O is the center; A and B are
+ * the arc ends (A on the right, the arc runs counter-clockwise from A to B).
+ * @returns {{ok:true, center:number[], radius:number, startDeg:number, endDeg:number, points:number[][]} | {ok:false, reason:string}}
+ */
+export function sector({ radius, angleDeg }) {
+  if (!(radius > 0)) {
+    return { ok: false, reason: '半径は正の数である必要があります。' };
+  }
+  if (!(angleDeg > 0 && angleDeg < 360)) {
+    return { ok: false, reason: '中心角は 0°〜360° の範囲で指定してください（360° は円を使ってください）。' };
+  }
+  const startDeg = 90 - angleDeg / 2;
+  const endDeg = 90 + angleDeg / 2;
+  const at = (deg) => [radius * Math.cos(deg2rad(deg)), radius * Math.sin(deg2rad(deg))];
+  return { ok: true, center: [0, 0], radius, startDeg, endDeg, points: [at(startDeg), [0, 0], at(endDeg)] };
+}
+
+/**
+ * Axis-aligned bounds of the arc of a circle from startDeg counter-clockwise
+ * to endDeg (endDeg > startDeg; a span of 360 or more is the whole circle).
+ */
+export function arcBBox(center, radius, startDeg, endDeg) {
+  const at = (deg) => [center[0] + radius * Math.cos(deg2rad(deg)), center[1] + radius * Math.sin(deg2rad(deg))];
+  const pts = [at(startDeg), at(endDeg)];
+  for (let k = Math.ceil(startDeg / 90); k * 90 <= endDeg; k++) pts.push(at(k * 90));
+  return {
+    minX: Math.min(...pts.map((p) => p[0])),
+    maxX: Math.max(...pts.map((p) => p[0])),
+    minY: Math.min(...pts.map((p) => p[1])),
+    maxY: Math.max(...pts.map((p) => p[1])),
+  };
+}

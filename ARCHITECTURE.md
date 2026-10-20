@@ -9,13 +9,15 @@
 ```
 index.html             エントリーポイント / DOM構造
 css/style.css          レイアウト・見た目
-js/geometry2d.js       2D幾何計算（座標のみを返す）
+js/geometry2d.js       2D幾何計算（座標のみを返す。多角形・おうぎ形）
+js/nets.js             展開図（立方体・直方体・円柱・円錐）の面・辺・円・おうぎ形と寸法
+js/hatch.js            斜線（ハッチング）を多角形に切り取った線分として返す
 js/geometry3d.js       3D形状データ生成（頂点・辺・面、円柱/円錐の解析的表現）
 js/projections.js      3D→2D投影（線形写像）と、その正確な投影方向（視線）
 js/hidden-line.js      多面体の可視/不可視エッジ判定
 js/ellipse.js          円の投影＝パラメトリック楕円（点・外接矩形・Bézier弧）
 js/curved-solids.js    円柱・円錐の輪郭線（母線）と縁の可視/不可視弧
-js/annotations.js      2D の注釈（頂点名・辺の長さ/寸法線・内角）の値計算と配置
+js/annotations.js      2D の注釈（頂点名・辺の長さ/寸法線・内角・等長記号）の値計算と配置
 js/annotations3d.js    3D の寸法（幅・高さ・奥行き/底面の一辺/半径）の値計算と配置
 js/scene-builder.js    上記を組み合わせ、描画用の平面データ（scene）を作る
 js/render-svg.js       scene → SVG文字列
@@ -152,6 +154,33 @@ Bézier制御点にもそのまま適用できる）。
   描くときの互換性のため）。`font-family` はシステムフォントのみ
   （`FONT_FAMILY`）。外部 Web フォントは `<img>` 経由の SVG では読み込まれず、
   Canvas を taint しうるため使わない。
+* **等長記号**: `options.equalMarks` のとき、`equalLengthGroups` が論理座標の
+  辺の長さを相対誤差 1e-6 でまとめ、2本以上ある長さだけを登場順に 1本・2本…の
+  グループにする。辺の中点に法線方向の短い線を本数分並べ、`addLine` で描く
+  （直角記号と同じく `Placer`・`covered` に乗る）。
+* **任意の頂点名・向きの指定**: `options.names`（配列、'' の頂点は名前なし）と
+  `options.orientation`（開いた折れ線の内側を ±1 で指定）。おうぎ形を開いた
+  折れ線 A-O-B として注釈するために追加した（中心角が 180° を超えると、
+  A-O-B の面積の符号からは内側が逆になるため、弧を含めた輪郭の符号を渡す）。
+* **個別の線分への長さ表示**: `annotateSegments(dims, points, map, obstacles, options)`
+  は、1つの多角形ではない図（展開図・円の半径）用に、線分ごとに「ラベルを置く側」
+  を指定して長さを表示する。`Placer`・`buildDimensionLine` は 2D と共通。
+
+## 円・おうぎ形・展開図・斜線（#15）
+
+* **円・おうぎ形**: `buildSceneCircular`。曲線は SVG の `A` コマンドで厳密に
+  描く（`computeFit` の写像は一様スケール＋Y反転なので、論理座標で反時計回りの
+  弧は SVG で sweep-flag 0 になる）。外接矩形は `arcBBox`（両端と、弧が通る
+  0°/90°/180°/270° の点）。おうぎ形は弦ではなく中心角の対称軸を鉛直にして置く。
+* **展開図**: `nets.js` が `{ faces, lines, circles, sectors, dims, angle }` を返し、
+  `buildSceneNet` が描く。`lines` は面の辺を重複なしに並べたもので、2面が共有する
+  辺を `fold`（折り目）とする（面 6 枚の展開図なら折り目は必ず 5 本、テストあり）。
+  `dims` は各長さを1か所だけに表示するための線分と置く側。
+* **斜線**: 塗り `'hatch'` は `hatch.js` の `hatchSegments`（領域を回転して
+  水平の走査線と辺の交点を偶奇規則で組にする）で線分にし、輪郭の下に描く。
+  SVG の `<pattern>` を使わないのは、Word / PowerPoint への貼り付けや SVG の
+  取り込みで崩れることがあるため。線の間隔は線幅から決める（px 一定）。
+
 ## 寸法（3D）
 
 `annotations3d.js` の `polyhedronDimensionItems`（多面体）/

@@ -8,9 +8,14 @@ import {
   generalPolygon,
   closingEdge,
   triangleMeasures,
+  rectangle,
+  parallelogram,
+  trapezoid,
+  sector,
 } from './geometry2d.js';
+import { NET_FACTORIES } from './nets.js';
 import { renderSvgString } from './render-svg.js';
-import { buildScene2D, buildScene3D } from './scene-builder.js';
+import { buildScene2D, buildScene3D, buildSceneCircular, buildSceneNet } from './scene-builder.js';
 import { downloadSvg, downloadPng, svgToPngBlob } from './export-png.js';
 import { encodeState, decodeState } from './url-state.js';
 
@@ -37,6 +42,15 @@ const ICONS = {
   regular: '<polygon points="12,2.5 20.5,7.3 20.5,16.7 12,21.5 3.5,16.7 3.5,7.3" />',
   triangle: '<polygon points="12,3 21.5,20.5 2.5,20.5" />',
   general: '<polygon points="4,18 7,5 15,3 21,11 14,20" />',
+  rectangle: '<rect x="2.5" y="6" width="19" height="12" />',
+  parallelogram: '<polygon points="2,18 7,6 22,6 17,18" />',
+  trapezoid: '<polygon points="2,18 7,6 15,6 22,18" />',
+  circle: '<circle cx="12" cy="12" r="9" />',
+  sector: '<path d="M12 19L4.2 7.5A10 10 0 0 1 19.8 7.5Z" />',
+  netCube: '<path d="M8 2h5v20H8zM3 7h18v5H3zM8 17h5" />',
+  netBox: '<path d="M7 3h6v4H7zM2 7h20v8H2zM7 7v8M13 7v8M16 7v8M7 15h6v4H7z" />',
+  netCylinder: '<circle cx="12" cy="4.5" r="2.5" /><rect x="3" y="7" width="18" height="10" /><circle cx="12" cy="19.5" r="2.5" />',
+  netCone: '<path d="M12 2L4.5 12.5A9 9 0 0 0 19.5 12.5Z" /><circle cx="12" cy="19" r="3" />',
   cube: '<path d="M4 8h11v11H4zM4 8l5-5h11v11l-5 5M15 8l5-5" />',
   box: '<path d="M2 10h14v9H2zM2 10l5-5h15v9l-6 5M16 10l6-5" />',
   triangularPrism: '<path d="M3 20l5-13 5 13zM8 7h11l5 13H13M19 7" transform="scale(.9) translate(-1 1)" />',
@@ -270,6 +284,7 @@ function collectState() {
   document.querySelectorAll('.general-length').forEach((el, i) => (state[`gl${i}`] = el.value));
   document.querySelectorAll('.general-heading').forEach((el, i) => (state[`gh${i}`] = el.value));
   for (const el of document.querySelectorAll('.shape3d-field')) state[`d.${el.dataset.key}`] = el.value;
+  for (const el of document.querySelectorAll('.net-field')) state[`n.${el.dataset.key}`] = el.value;
   return state;
 }
 
@@ -279,9 +294,10 @@ function applyState(state) {
     else el.value = value;
   };
   // Controls that rebuild other fields go first.
-  for (const id of ['general-count', 'shape3d-type']) if (id in state) setValue($(id), state[id]);
+  for (const id of ['general-count', 'shape3d-type', 'net-type']) if (id in state) setValue($(id), state[id]);
   buildGeneralEdgeInputs();
   buildShape3DFields();
+  buildNetFields();
   for (const [key, value] of Object.entries(state)) {
     const el = document.getElementById(key);
     if (el && inForm(el) && el.matches('input, select')) setValue(el, value);
@@ -297,7 +313,11 @@ function applyState(state) {
     const key = `d.${el.dataset.key}`;
     if (key in state) el.value = state[key];
   }
-  if (state.mode === '3d' || state.mode === '2d') mode = state.mode;
+  for (const el of document.querySelectorAll('.net-field')) {
+    const key = `n.${el.dataset.key}`;
+    if (key in state) el.value = state[key];
+  }
+  if (['2d', '3d', 'net'].includes(state.mode)) mode = state.mode;
 }
 
 // Debounced: browsers throttle rapid history.replaceState calls (typing fires one render per key).
@@ -320,8 +340,10 @@ function fileBaseName() {
     const type = $('shape2d-type').value;
     if (type === 'regular') return `regular-${$('regular-sides').value}gon`;
     if (type === 'triangle') return `triangle-${$('triangle-method').value}`;
-    return `polygon-${document.querySelectorAll('.general-length').length}`;
+    if (type === 'general') return `polygon-${document.querySelectorAll('.general-length').length}`;
+    return type;
   }
+  if (mode === 'net') return `net-${$('net-type').value.slice(3).toLowerCase()}`;
   return `${$('shape3d-type').value}_${$('projection-type').value}`;
 }
 
@@ -330,16 +352,17 @@ function figureName() {
   if (mode === '2d') {
     const type = $('shape2d-type').value;
     if (type === 'regular') return `正${$('regular-sides').value}角形`;
-    if (type === 'triangle') return '三角形';
-    return `${document.querySelectorAll('.general-length').length}角形`;
+    if (type === 'general') return `${document.querySelectorAll('.general-length').length}角形`;
+    return $('shape2d-type').selectedOptions[0].textContent;
   }
   const label = (id) => $(id).selectedOptions[0].textContent;
+  if (mode === 'net') return `${label('net-type')}の展開図`;
   return `${label('shape3d-type')}_${label('projection-type')}`;
 }
 
 function currentStyle() {
   const fillMode = $('style-fill-mode').value;
-  const fill = fillMode === 'none' ? 'none' : fillMode === 'white' ? '#ffffff' : $('style-fill-color').value;
+  const fill = { none: 'none', white: '#ffffff', hatch: 'hatch' }[fillMode] ?? $('style-fill-color').value;
   const strokeWidth = readNumber($('style-stroke-width'));
   return {
     stroke: $('style-stroke').value,
@@ -387,7 +410,38 @@ function formatError(value) {
 
 function compute2DShape() {
   const type = $('shape2d-type').value;
-  for (const id of ['regular-error', 'triangle-error', 'general-error']) $(id).textContent = '';
+  for (const el of document.querySelectorAll('#panel-2d .error-message')) el.textContent = '';
+
+  // Shapes given by a few numbers; a failure is shown in `#<type>-error`.
+  const simple = {
+    rectangle: () => rectangle({ width: readNumber($('rect-width')), height: readNumber($('rect-height')) }),
+    parallelogram: () =>
+      parallelogram({ base: readNumber($('para-base')), side: readNumber($('para-side')), angleDeg: readNumber($('para-angle')) }),
+    trapezoid: () =>
+      trapezoid({
+        bottom: readNumber($('trap-bottom')),
+        top: readNumber($('trap-top')),
+        height: readNumber($('trap-height')),
+        offset: readNumber($('trap-offset')),
+      }),
+    sector: () => sector({ radius: readNumber($('sector-radius')), angleDeg: readNumber($('sector-angle')) }),
+  };
+  if (type in simple) {
+    const result = simple[type]();
+    if (!result.ok) {
+      $(`${type}-error`).textContent = result.reason;
+      return null;
+    }
+    return type === 'sector' ? { circular: result } : { points: result.points, closed: true };
+  }
+  if (type === 'circle') {
+    const radius = readNumber($('circle-radius'));
+    if (!(radius > 0)) {
+      $('circle-error').textContent = '半径は正の数で入力してください。';
+      return null;
+    }
+    return { circular: { radius } };
+  }
 
   if (type === 'regular') {
     const sides = readNumber($('regular-sides'));
@@ -458,13 +512,15 @@ function currentAnnotation() {
   const vertexNames = $('ann-vertex-names').checked;
   const angles = $('ann-angles').checked;
   const rightAngles = $('ann-right-angles').value;
-  if (!vertexNames && !angles && rightAngles !== 'auto' && lengths === 'none') return null;
+  const equalMarks = $('ann-equal-marks').checked;
+  if (!vertexNames && !angles && !equalMarks && rightAngles !== 'auto' && lengths === 'none') return null;
   const decimals = readNumber($('ann-decimals'));
   const fontSize = readNumber($('ann-font-size'));
   return {
     vertexNames,
     angles,
     rightAngles,
+    equalMarks,
     lengths,
     unit: $('ann-unit').value.trim(),
     decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 4 ? decimals : 1,
@@ -533,6 +589,72 @@ function buildShape3DFields() {
   buildSteppers(container);
 }
 
+// ---------- nets ----------
+
+const NET_FIELDS = {
+  netCube: [{ id: 'size', label: '一辺の長さ', value: 40 }],
+  netBox: [
+    { id: 'width', label: '横', value: 50 },
+    { id: 'depth', label: '奥行き', value: 30 },
+    { id: 'height', label: '高さ', value: 40 },
+  ],
+  netCylinder: [
+    { id: 'radius', label: '底面の半径', value: 10 },
+    { id: 'height', label: '高さ', value: 30 },
+  ],
+  netCone: [
+    { id: 'radius', label: '底面の半径', value: 10 },
+    { id: 'slant', label: '母線の長さ', value: 30 },
+  ],
+};
+
+const NET_DIM_HINTS = {
+  netCube: '一辺の長さを1か所に表示します。',
+  netBox: '横・奥行き・高さをそれぞれ1か所に表示します。',
+  netCylinder: '側面の横（底面の円周）・高さ・底面の半径を表示します。',
+  netCone: '母線・底面の半径と、側面のおうぎ形の中心角を表示します。',
+};
+
+function buildNetFields() {
+  const container = $('net-params');
+  container.innerHTML = '';
+  for (const field of NET_FIELDS[$('net-type').value]) {
+    const label = document.createElement('label');
+    label.className = 'field';
+    label.innerHTML = `<span>${field.label}</span><input type="number" required class="net-field" data-key="${field.id}" min="0.01" step="0.5" value="${field.value}" />`;
+    container.appendChild(label);
+  }
+  buildSteppers(container);
+}
+
+function computeNet() {
+  $('net-error').textContent = '';
+  const params = {};
+  for (const input of document.querySelectorAll('.net-field')) params[input.dataset.key] = readNumber(input);
+  const type = $('net-type').value;
+  if (type === 'netCylinder') params.pi = $('net-pi').value === 'pi' ? Math.PI : 3.14;
+  const factory = { netCube: 'cube', netBox: 'box', netCylinder: 'cylinder', netCone: 'cone' }[type];
+  const net = NET_FACTORIES[factory](params);
+  if (!net.ok) {
+    $('net-error').textContent = net.reason;
+    return null;
+  }
+  return net;
+}
+
+function currentNetDimensions() {
+  if (!$('netdim-show').checked) return null;
+  const decimals = readNumber($('netdim-decimals'));
+  const fontSize = readNumber($('netdim-font-size'));
+  return {
+    show: true,
+    lengths: $('netdim-style').value,
+    unit: $('netdim-unit').value.trim(),
+    decimals: Number.isInteger(decimals) && decimals >= 0 && decimals <= 4 ? decimals : 1,
+    fontSize: fontSize >= 6 && fontSize <= 72 ? fontSize : 18,
+  };
+}
+
 function compute3DShape() {
   $('shape3d-error').textContent = '';
   $('oblique-error').textContent = '';
@@ -565,7 +687,11 @@ function render() {
   let scene = null;
   if (mode === '2d') {
     const shape = compute2DShape();
-    if (shape) scene = buildScene2D(shape.points, shape.closed, style, currentAnnotation());
+    if (shape?.circular) scene = buildSceneCircular(shape.circular, style, currentAnnotation());
+    else if (shape) scene = buildScene2D(shape.points, shape.closed, style, currentAnnotation());
+  } else if (mode === 'net') {
+    const net = computeNet();
+    if (net) scene = buildSceneNet(net, style, { foldLines: $('net-fold').value }, currentNetDimensions());
   } else {
     const input = compute3DShape();
     if (input) {
@@ -622,6 +748,7 @@ function setMode(newMode) {
   mode = newMode;
   $('panel-2d').hidden = mode !== '2d';
   $('panel-3d').hidden = mode !== '3d';
+  $('panel-net').hidden = mode !== 'net';
   document.querySelectorAll('.mode-btn').forEach((btn) => {
     const active = btn.dataset.mode === mode;
     btn.classList.toggle('active', active);
@@ -636,17 +763,26 @@ function syncVisibility() {
   $('fieldset-regular').hidden = type2d !== 'regular';
   $('fieldset-triangle').hidden = type2d !== 'triangle';
   $('fieldset-general').hidden = type2d !== 'general';
+  for (const type of ['rectangle', 'parallelogram', 'trapezoid', 'circle', 'sector']) $(`fieldset-${type}`).hidden = type2d !== type;
+  // A circle has no corners or edges to compare.
+  for (const id of ['ann-angles-field', 'ann-equal-marks-field', 'ann-right-angles-field']) $(id).hidden = type2d === 'circle';
   const method = $('triangle-method').value;
   $('triangle-sss').hidden = method !== 'sss';
   $('triangle-sas').hidden = method !== 'sas';
   $('triangle-asa').hidden = method !== 'asa';
   $('oblique-params').hidden = $('projection-type').value !== 'oblique';
   const anyAnnotation =
-    ['ann-vertex-names', 'ann-lengths', 'ann-angles'].some((id) => $(id).checked) || $('ann-right-angles').value === 'auto';
+    ['ann-vertex-names', 'ann-lengths', 'ann-angles', 'ann-equal-marks'].some((id) => $(id).checked) ||
+    $('ann-right-angles').value === 'auto';
   $('ann-options').hidden = !anyAnnotation;
   $('ann-length-style-field').hidden = !$('ann-lengths').checked;
   $('ann-unit-field').hidden = !$('ann-lengths').checked;
   $('dim3d-options').hidden = !$('dim3d-show').checked;
+  const netType = $('net-type').value;
+  $('net-fold-field').hidden = !['netCube', 'netBox'].includes(netType);
+  $('net-pi-field').hidden = netType !== 'netCylinder';
+  $('net-dim-hint').textContent = NET_DIM_HINTS[netType];
+  $('netdim-options').hidden = !$('netdim-show').checked;
   $('style-fill-color').hidden = $('style-fill-mode').value !== 'custom';
   syncChips();
   syncSliders();
@@ -664,6 +800,7 @@ function wireEvents() {
     $('general-edges').dataset.edited = 'true';
   });
   $('shape3d-type').addEventListener('input', buildShape3DFields);
+  $('net-type').addEventListener('input', buildNetFields);
 
   // One delegated handler: any form change re-syncs visibility and re-renders.
   for (const root of formRoots()) {
@@ -758,6 +895,7 @@ function wireEvents() {
 
 buildGeneralEdgeInputs();
 buildShape3DFields();
+buildNetFields();
 buildSliders();
 buildSteppers();
 wireEvents();

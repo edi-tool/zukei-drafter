@@ -19,6 +19,9 @@ const DEFAULTS = {
   lengths: 'none', // 'none' | 'label' | 'dimension'
   angles: false,
   rightAngles: 'hidden', // 'hidden' | 'auto'
+  equalMarks: false, // tick marks on edges of equal length
+  names: null, // custom vertex names (array; '' leaves a vertex unnamed), default A, B, C...
+  orientation: null, // 1 / -1 overrides which side of an open path is the inside (sectors)
   unit: '',
   decimals: 1,
   fontSize: 18,
@@ -41,7 +44,11 @@ export function isRightAngle(interiorDeg, epsilonDeg = RIGHT_ANGLE_EPSILON_DEG) 
 export function hasAnnotations(options) {
   if (!options) return false;
   return Boolean(
-    options.vertexNames || options.angles || options.rightAngles === 'auto' || (options.lengths && options.lengths !== 'none'),
+    options.vertexNames ||
+      options.angles ||
+      options.equalMarks ||
+      options.rightAngles === 'auto' ||
+      (options.lengths && options.lengths !== 'none'),
   );
 }
 
@@ -156,12 +163,12 @@ export function placeInWedge(v, d, rays, radius, box, gap) {
 /**
  * Per-vertex angle data in any coordinate system. For an open path the end
  * vertices have no angle (null). `interiorDeg` is measured on the polygon's
- * interior side (taken from the signed area, also for an open path), so it can
- * exceed 180 at a reflex vertex.
+ * interior side (taken from the signed area, also for an open path, unless
+ * `orientation` gives it), so it can exceed 180 at a reflex vertex.
  */
-export function vertexAngles(points, closed) {
+export function vertexAngles(points, closed, orientation = null) {
   const n = points.length;
-  const orient = signedArea(points) >= 0 ? 1 : -1;
+  const orient = orientation ?? (signedArea(points) >= 0 ? 1 : -1);
   const result = [];
   for (let i = 0; i < n; i++) {
     if (!closed && (i === 0 || i === n - 1)) {
@@ -191,6 +198,30 @@ export function vertexAngles(points, closed) {
     result.push({ e1, e2, bisector, interiorDeg: (interior * 180) / Math.PI });
   }
   return result;
+}
+
+/**
+ * Groups of edges with the same length (relative tolerance), for equal-length
+ * marks: only lengths shared by two or more edges, the k-th group getting k
+ * ticks in order of first appearance.
+ * @returns {{edges: number[], ticks: number}[]}
+ */
+export function equalLengthGroups(points, closed) {
+  const n = points.length;
+  const edgeCount = closed ? n : n - 1;
+  const lengths = [];
+  for (let i = 0; i < edgeCount; i++) {
+    const [p, q] = [points[i], points[(i + 1) % n]];
+    lengths.push(Math.hypot(q[0] - p[0], q[1] - p[1]));
+  }
+  const tol = 1e-6 * Math.max(...lengths);
+  const groups = [];
+  for (let i = 0; i < edgeCount; i++) {
+    const g = groups.find((group) => Math.abs(lengths[group[0]] - lengths[i]) <= tol);
+    if (g) g.push(i);
+    else groups.push([i]);
+  }
+  return groups.filter((g) => g.length >= 2).map((edges, k) => ({ edges, ticks: k + 1 }));
 }
 
 /** Even-odd ray casting. */
@@ -308,7 +339,7 @@ export function annotate2D(points, closed, map, options = {}) {
   const lineWidth = Math.max(0.75, o.strokeWidth * 0.6);
   const gap = o.fontSize * 0.3;
   const maxTravel = o.fontSize * 20;
-  const orient = signedArea(px) >= 0 ? 1 : -1;
+  const orient = o.orientation ?? (signedArea(px) >= 0 ? 1 : -1);
   const placer = new Placer(Math.max(2, o.strokeWidth / 2 + 1));
   const showLengths = o.lengths === 'label' || o.lengths === 'dimension';
   const dimOffset = o.lengths === 'dimension' ? o.fontSize * 0.9 : 0;
@@ -348,7 +379,28 @@ export function annotate2D(points, closed, map, options = {}) {
     }
   }
 
-  const angles = vertexAngles(px, closed);
+  const angles = vertexAngles(px, closed, orient);
+
+  // Equal-length marks: edges whose lengths match share a tick count (1, 2,
+  // 3, ... per group, in order of first appearance), drawn across the edge's
+  // middle. Only lengths that occur on two or more edges are marked.
+  if (o.equalMarks) {
+    for (const { edges: group, ticks } of equalLengthGroups(points, closed)) {
+      for (const i of group) {
+        const p = px[i];
+        const q = px[(i + 1) % n];
+        const u = unit(sub(q, p));
+        const normal = [-u[1], u[0]];
+        const half = Math.max(5, o.fontSize * 0.35);
+        const spacing = Math.max(3, o.fontSize * 0.22);
+        const mid = mul(add(p, q), 0.5);
+        for (let k = 0; k < ticks; k++) {
+          const c = add(mid, mul(u, (k - (ticks - 1) / 2) * spacing));
+          addLine(add(c, mul(normal, -half)), add(c, mul(normal, half)));
+        }
+      }
+    }
+  }
 
   // Right-angle marks: a small square at ~90deg vertices instead of an arc,
   // matching the textbook convention. Drawn before the angle-arc loop so a
@@ -430,7 +482,8 @@ export function annotate2D(points, closed, map, options = {}) {
   if (o.vertexNames) {
     for (let i = 0; i < n; i++) {
       const v = px[i];
-      const text = vertexName(i);
+      const text = o.names ? o.names[i] ?? '' : vertexName(i);
+      if (!text) continue;
       const box = estimateTextBox(text, o.fontSize);
       const a = angles[i];
       let dir;
@@ -464,4 +517,72 @@ export function annotate2D(points, closed, map, options = {}) {
     bounds.maxY = Math.max(bounds.maxY, y);
   }
   return { items, bounds, labels };
+}
+
+/**
+ * Length labels for individual segments (for figures that are not a single
+ * polygon: nets, a circle's radius). Each entry names its own outward side,
+ * since there is no polygon interior to take it from.
+ * @param {{p:number[], q:number[], side:number[], text:string}[]} dims logical
+ *   segment ends, the logical unit vector pointing to the side the label goes on,
+ *   and the label
+ * @param {{p:number[], dir:number[], text:string}[]} points labels at a point,
+ *   pushed away from it along the logical unit vector `dir` (e.g. a center's name)
+ * @param {[number[],number[]][]} obstacles px segments labels must avoid (the figure)
+ * @param {object} options see DEFAULTS (`lengths` picks 'label' or 'dimension')
+ * @returns {{items: object[], bounds: object|null}}
+ */
+export function annotateSegments(dims, points, map, obstacles, options = {}) {
+  const o = { ...DEFAULTS, ...options };
+  const placer = new Placer(Math.max(2, o.strokeWidth / 2 + 1));
+  const lineItems = [];
+  const labels = [];
+  const covered = [];
+  const lineWidth = Math.max(0.75, o.strokeWidth * 0.6);
+  const gap = o.fontSize * 0.3;
+  const maxTravel = o.fontSize * 20;
+  const dimOffset = o.lengths === 'dimension' ? o.fontSize * 0.9 : 0;
+  // logical y is up, px y is down
+  const pxDir = (d) => unit([d[0], -d[1]]);
+  const addLabel = (start, dir, text) => {
+    const box = estimateTextBox(text, o.fontSize);
+    const s = add(start, mul(dir, support(box.width / 2, box.height / 2, dir)));
+    const center = placer.find(s, dir, box, maxTravel) ?? s;
+    placer.commit(center, box);
+    labels.push(textItem(center, text, o));
+    const r = rectOf(center, box);
+    covered.push([r.minX, r.minY], [r.maxX, r.maxY]);
+  };
+
+  for (const [p, q] of obstacles) placer.addSegment(p, q);
+  for (const d of dims) {
+    const p = map(d.p);
+    const q = map(d.q);
+    const outward = pxDir(d.side);
+    if (o.lengths === 'dimension') {
+      const { lines, arrows } = buildDimensionLine(p, q, outward, dimOffset, o.color, o.fontSize);
+      for (const [a, b] of lines) {
+        lineItems.push({ type: 'line', points: [a, b], stroke: o.color, strokeWidth: lineWidth });
+        placer.addSegment(a, b);
+        covered.push(a, b);
+      }
+      lineItems.push(...arrows);
+    }
+  }
+  for (const pt of points) addLabel(add(map(pt.p), mul(pxDir(pt.dir), gap)), pxDir(pt.dir), pt.text);
+  for (const d of dims) {
+    const mid = mul(add(map(d.p), map(d.q)), 0.5);
+    const outward = pxDir(d.side);
+    addLabel(add(mid, mul(outward, dimOffset + gap)), outward, d.text);
+  }
+
+  let bounds = null;
+  for (const [x, y] of covered) {
+    bounds ??= { minX: x, maxX: x, minY: y, maxY: y };
+    bounds.minX = Math.min(bounds.minX, x);
+    bounds.maxX = Math.max(bounds.maxX, x);
+    bounds.minY = Math.min(bounds.minY, y);
+    bounds.maxY = Math.max(bounds.maxY, y);
+  }
+  return { items: [...lineItems, ...labels], bounds };
 }

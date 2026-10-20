@@ -529,6 +529,79 @@ try {
     }
   });
 
+  await check('2D: rectangle, parallelogram, trapezoid, circle and sector render; bad input is reported', async () => {
+    await page.click('.mode-btn[data-mode="2d"]');
+    for (const type of ['rectangle', 'parallelogram', 'trapezoid', 'circle', 'sector']) {
+      await choose('shape2d-type', type);
+      assert.ok(await page.isVisible(`#fieldset-${type}`));
+      assert.ok((await count('polygon')) + (await count('path')) >= 1, type);
+    }
+    await set('#sector-angle', 400);
+    assert.match(await page.textContent('#sector-error'), /中心角/);
+    assert.equal(await count('svg'), 0);
+    await set('#sector-angle', 120);
+    await page.check('#ann-vertex-names');
+    await page.check('#ann-angles');
+    const html = await preview();
+    for (const text of ['>A<', '>O<', '>B<', '>120°<']) assert.ok(html.includes(text), text);
+    await page.uncheck('#ann-vertex-names');
+    await page.uncheck('#ann-angles');
+    await choose('shape2d-type', 'circle');
+    assert.ok(!(await page.isVisible('#ann-angles')), 'no angle option for a circle');
+    await choose('shape2d-type', 'regular');
+  });
+
+  await check('equal-length marks and hatch fill', async () => {
+    await choose('shape2d-type', 'rectangle');
+    const before = await count('line');
+    await page.check('#ann-equal-marks');
+    assert.equal((await count('line')) - before, 6, '1 + 2 ticks on each pair of sides');
+    await page.uncheck('#ann-equal-marks');
+    await choose('style-fill-mode', 'hatch');
+    assert.ok((await count('line')) > 20);
+    assert.ok(!(await preview()).includes('fill="hatch"'));
+    await choose('style-fill-mode', 'none');
+    await choose('shape2d-type', 'regular');
+  });
+
+  await check('nets: every type renders, lengths and folds toggle, state survives a reload', async () => {
+    await page.click('.mode-btn[data-mode="net"]');
+    assert.ok(await page.isVisible('#panel-net'));
+    for (const type of ['netCube', 'netBox', 'netCylinder', 'netCone']) {
+      await choose('net-type', type);
+      assert.ok((await count('line')) + (await count('path')) >= 1, type);
+    }
+    await choose('net-type', 'netBox');
+    assert.equal(await dashed(), 0);
+    await choose('net-fold', 'dashed');
+    assert.equal(await dashed(), 5);
+    await page.check('#netdim-show');
+    await page.fill('#netdim-unit', 'cm');
+    await page.dispatchEvent('#netdim-unit', 'input');
+    assert.equal(await count('text'), 3);
+    await choose('net-type', 'netCylinder');
+    assert.ok((await preview()).includes('>62.8cm<'), 'circumference with π = 3.14');
+    await choose('net-pi', 'pi');
+    assert.ok((await preview()).includes('>62.8cm<'));
+    await page.fill('.net-field[data-key="radius"]', '20');
+    await page.dispatchEvent('.net-field[data-key="radius"]', 'input');
+    assert.ok((await preview()).includes('>125.7cm<'));
+    await page.waitForTimeout(400);
+    await page.reload();
+    await page.waitForSelector('#preview svg');
+    assert.equal(await page.inputValue('#net-type'), 'netCylinder');
+    assert.equal(await page.inputValue('.net-field[data-key="radius"]'), '20');
+    assert.ok((await preview()).includes('>125.7cm<'));
+    await choose('net-type', 'netCone');
+    await page.fill('.net-field[data-key="slant"]', '5');
+    await page.dispatchEvent('.net-field[data-key="slant"]', 'input');
+    assert.match(await page.textContent('#net-error'), /母線/);
+    page.once('dialog', (d) => d.accept());
+    await page.click('#btn-reset');
+    await page.waitForTimeout(400);
+    await page.click('.mode-btn[data-mode="2d"]');
+  });
+
   await check('no console errors or warnings during the whole session', async () => {
     assert.deepEqual(errors, []);
   });

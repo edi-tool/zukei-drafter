@@ -133,3 +133,38 @@ test('buildScene2D: right-angle marks on a figure without a 90° corner draw not
   const auto = buildScene2D(points, true, {}, { rightAngles: 'auto' });
   assert.deepEqual(auto, plain);
 });
+
+test('circle and sector scenes: inside the margin, plain when annotations are off', async () => {
+  const { buildSceneCircular } = await import('../js/scene-builder.js');
+  const { sector } = await import('../js/geometry2d.js');
+  for (const shape of [{ radius: 40 }, sector({ radius: 50, angleDeg: 120 }), sector({ radius: 50, angleDeg: 300 })]) {
+    const plain = buildSceneCircular(shape, {});
+    assert.deepEqual(buildSceneCircular(shape, {}, { lengths: 'none' }), plain);
+    assert.equal(plain.items.length, 1);
+    assert.ok(Math.max(plain.width, plain.height) === SIZE);
+    const all = buildSceneCircular(shape, { fill: 'hatch' }, { vertexNames: true, lengths: 'dimension', angles: true, equalMarks: true, unit: 'cm' });
+    const svg = renderSvgString(all);
+    assert.ok(!/NaN|undefined/.test(svg));
+    for (const it of all.items.filter((i) => i.points)) {
+      for (const [x, y] of it.points) assert.ok(x >= 0 && x <= all.width && y >= 0 && y <= all.height);
+    }
+    for (const t of all.items.filter((i) => i.type === 'text')) {
+      assert.ok(t.x > 0 && t.x < all.width && t.y > 0 && t.y < all.height, `${t.text} outside`);
+    }
+  }
+});
+
+test('hatch fill: 2D polygons get clipped lines under an unfilled outline', () => {
+  const { points } = regularPolygon({ sides: 4, sideLength: 40 });
+  const scene = buildScene2D(points, true, { fill: 'hatch' });
+  const outline = scene.items.at(-1);
+  assert.equal(outline.type, 'polygon');
+  assert.equal(outline.fill, 'none');
+  assert.ok(scene.items.slice(0, -1).length > 20);
+  assert.ok(scene.items.slice(0, -1).every((it) => it.type === 'line'));
+  assert.ok(!renderSvgString(scene).includes('fill="hatch"'));
+  // 3D solids hatch their silhouette.
+  const solid = buildScene3D('cube', { size: 60 }, 'cabinet', {}, { fill: 'hatch' });
+  assert.ok(!renderSvgString(solid).includes('fill="hatch"'));
+  assert.ok(solid.items.length > buildScene3D('cube', { size: 60 }, 'cabinet', {}, {}).items.length);
+});
