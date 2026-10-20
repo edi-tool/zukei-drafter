@@ -9,6 +9,7 @@ import {
   isRightAngle,
   pointInPolygon,
   segmentHitsRect,
+  signedArea,
   vertexAngles,
   vertexName,
 } from '../js/annotations.js';
@@ -266,4 +267,42 @@ test('render-svg: text is escaped and uses system fonts only', () => {
   assert.match(svg, /font-size="18"/);
   assert.match(svg, /fill="#123456"/);
   assert.ok(!/url\(|@font-face|@import/.test(svg), 'no external font reference');
+});
+
+test('equalLengthGroups: shared lengths get 1, 2, ... ticks; unique lengths none', async () => {
+  const { equalLengthGroups } = await import('../js/annotations.js');
+  const { rectangle, trapezoid } = await import('../js/geometry2d.js');
+  assert.deepEqual(equalLengthGroups(rectangle({ width: 60, height: 40 }).points, true), [
+    { edges: [0, 2], ticks: 1 },
+    { edges: [1, 3], ticks: 2 },
+  ]);
+  // Isosceles trapezoid: only the legs match.
+  assert.deepEqual(equalLengthGroups(trapezoid({ bottom: 80, top: 40, height: 30, offset: 20 }).points, true), [
+    { edges: [1, 3], ticks: 1 },
+  ]);
+  assert.deepEqual(equalLengthGroups(triangleFromSSS({ a: 3, b: 4, c: 5 }).points, true), []);
+  assert.equal(equalLengthGroups(regularPolygon({ sides: 6, sideLength: 10 }).points, true)[0].edges.length, 6);
+});
+
+test('equal-length marks: tick lines across the edges, counted in hasAnnotations', () => {
+  assert.ok(hasAnnotations({ equalMarks: true }));
+  const { points } = regularPolygon({ sides: 4, sideLength: 40 });
+  const plain = buildScene2D(points, true, {}, null);
+  const marked = buildScene2D(points, true, {}, { equalMarks: true });
+  const lines = marked.items.filter((it) => it.type === 'line');
+  assert.equal(lines.length, 4);
+  assert.equal(plain.items.length, 1);
+});
+
+test('custom vertex names and an explicit orientation for an open path', () => {
+  const map = (p) => [p[0], -p[1]];
+  // A-O-B with a right angle at O: by default the inside is the 90° side;
+  // the opposite orientation (a 270° sector) measures the reflex side.
+  const path = [[100, 0], [0, 0], [0, 100]];
+  const opts = { names: ['A', 'O', 'B'], vertexNames: true, angles: true };
+  const texts = (o) => annotate2D(path, false, map, o).labels.map((l) => l.text).sort();
+  assert.deepEqual(texts(opts), ['90°', 'A', 'B', 'O']);
+  const orient = signedArea(path.map(map)) >= 0 ? 1 : -1;
+  assert.deepEqual(texts({ ...opts, orientation: -orient }), ['270°', 'A', 'B', 'O']);
+  assert.deepEqual(texts({ ...opts, names: ['A', '', 'B'] }), ['90°', 'A', 'B']);
 });

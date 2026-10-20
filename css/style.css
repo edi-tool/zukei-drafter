@@ -790,6 +790,7 @@ select,
 /* Space out the stacked fields inside each section. */
 .mode-panel,
 #shape3d-params,
+#net-params,
 #oblique-params,
 .triangle-inputs {
   display: flex;

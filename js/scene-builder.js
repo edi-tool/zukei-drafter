@@ -11,7 +11,9 @@ import { matrixOf, applyMatrix, viewDirectionOf } from './projections.js';
 import { classifyEdges } from './hidden-line.js';
 import { ellipseBBox, ellipseArcBeziers, ellipsePoint } from './ellipse.js';
 import { cylinderOutline, coneOutline } from './curved-solids.js';
-import { annotate2D, hasAnnotations } from './annotations.js';
+import { annotate2D, annotateSegments, hasAnnotations, formatNumber, signedArea } from './annotations.js';
+import { arcBBox } from './geometry2d.js';
+import { hatchSegments } from './hatch.js';
 import { polyhedronDimensionItems, curvedDimensionItems, hasDimensions3D } from './annotations3d.js';
 
 const DEFAULT_SIZE = 800;
@@ -100,19 +102,30 @@ function strokeStyle(s, hidden) {
   };
 }
 
-function fillItem(s, hullPoints) {
+/** Fill style 'hatch' draws 45° lines instead of a solid colour (白黒印刷向けの斜線). */
+export const HATCH = 'hatch';
+
+function hatchItems(s, polygon) {
+  const spacing = Math.max(6, s.strokeWidth * 4);
+  const strokeWidth = Math.max(0.5, s.strokeWidth * 0.5);
+  return hatchSegments(polygon, spacing).map((points) => ({ type: 'line', points, stroke: s.stroke, strokeWidth }));
+}
+
+/** Fill of a region given as a px polygon: a solid polygon, hatch lines, or nothing. */
+function fillItem(s, polygon) {
   if (s.fill === 'none') return [];
-  return [{ type: 'polygon', points: hullPoints, stroke: 'none', strokeWidth: 0, fill: s.fill }];
+  if (s.fill === HATCH) return hatchItems(s, polygon);
+  return [{ type: 'polygon', points: polygon, stroke: 'none', strokeWidth: 0, fill: s.fill }];
 }
 
 function scene(fit, s, items) {
   return { width: fit.width, height: fit.height, background: s.background ?? 'none', items, meta: { scale: fit.scale } };
 }
 
-function shapeItem2D(mapped, closed, s) {
-  return closed
-    ? { type: 'polygon', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth, fill: s.fill }
-    : { type: 'polyline', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth };
+function shapeItems2D(mapped, closed, s) {
+  if (!closed) return [{ type: 'polyline', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth }];
+  if (s.fill !== HATCH) return [{ type: 'polygon', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth, fill: s.fill }];
+  return [...hatchItems(s, mapped), { type: 'polygon', points: mapped, stroke: s.stroke, strokeWidth: s.strokeWidth, fill: 'none' }];
 }
 
 /**
@@ -158,11 +171,184 @@ export function buildScene2D(points, closed, style = {}, annotation = null) {
   const bbox = bboxOfPoints(points);
   if (!hasAnnotations(annotation)) {
     const fit = computeFit(bbox, s.size, s.margin);
-    return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s)]);
+    return scene(fit, s, shapeItems2D(points.map(fit.map), closed, s));
   }
   const options = { ...annotation, color: s.stroke, strokeWidth: s.strokeWidth };
   const { fit, ann } = fitWithPad(bbox, s.size, s.margin, (fit) => annotate2D(points, closed, fit.map, options));
-  return scene(fit, s, [shapeItem2D(points.map(fit.map), closed, s), ...ann.items]);
+  return scene(fit, s, [...shapeItems2D(points.map(fit.map), closed, s), ...ann.items]);
+}
+
+// ---------- circles and sectors ----------
+
+const fmtPt = (p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
+
+/** Points on a logical arc (counter-clockwise startDeg -> endDeg), `perTurn` samples per full turn. */
+function arcSamples(center, radius, startDeg, endDeg, perTurn = 96) {
+  const steps = Math.max(2, Math.ceil(((endDeg - startDeg) / 360) * perTurn));
+  const pts = [];
+  for (let k = 0; k <= steps; k++) {
+    const t = ((startDeg + ((endDeg - startDeg) * k) / steps) * Math.PI) / 180;
+    pts.push([center[0] + radius * Math.cos(t), center[1] + radius * Math.sin(t)]);
+  }
+  return pts;
+}
+
+/**
+ * SVG path data for a logical circle or sector under `fit` (a uniform scale
+ * plus a y flip, so a circle stays a circle and counter-clockwise on paper is
+ * sweep-flag 0 in SVG's y-down coordinates).
+ */
+function circularPath({ center, radius, startDeg, endDeg }, fit) {
+  const r = (radius * fit.scale).toFixed(2);
+  const at = (deg) => fit.map([center[0] + radius * Math.cos((deg * Math.PI) / 180), center[1] + radius * Math.sin((deg * Math.PI) / 180)]);
+  if (startDeg === undefined) {
+    // Whole circle: two half arcs.
+    return `M${fmtPt(at(0))} A${r},${r} 0 1 0 ${fmtPt(at(180))} A${r},${r} 0 1 0 ${fmtPt(at(0))} Z`;
+  }
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return `M${fmtPt(fit.map(center))} L${fmtPt(at(startDeg))} A${r},${r} 0 ${large} 0 ${fmtPt(at(endDeg))} Z`;
+}
+
+/** Outline (+ fill) of a circle or sector; `region` is the px polygon used for hatching. */
+function circularItems(shape, fit, s, fill = s.fill) {
+  const region = (shape.startDeg === undefined
+    ? arcSamples(shape.center, shape.radius, 0, 360).slice(0, -1)
+    : [shape.center, ...arcSamples(shape.center, shape.radius, shape.startDeg, shape.endDeg)]
+  ).map(fit.map);
+  const solid = fill !== HATCH ? fill : 'none';
+  return [
+    ...(fill === HATCH ? hatchItems(s, region) : []),
+    { type: 'path', d: circularPath(shape, fit), stroke: s.stroke, strokeWidth: s.strokeWidth, fill: solid },
+  ];
+}
+
+function circularBBox(shape) {
+  if (shape.startDeg === undefined) return arcBBox(shape.center, shape.radius, 0, 360);
+  return unionBBox(arcBBox(shape.center, shape.radius, shape.startDeg, shape.endDeg), bboxOfPoints([shape.center]));
+}
+
+/**
+ * Scene for a circle ({ radius }) or a sector (geometry2d `sector` result:
+ * { center, radius, startDeg, endDeg, points: [A, O, B] }). Annotations use
+ * the same options as polygons: a sector is annotated as the open path A-O-B
+ * (its two radii and central angle); a circle gets its center O and, with
+ * lengths on, a radius drawn to the right.
+ */
+export function buildSceneCircular(shape, style = {}, annotation = null) {
+  const s = { ...DEFAULT_STYLE, ...style };
+  const center = shape.center ?? [0, 0];
+  const geom = { ...shape, center };
+  const bbox = circularBBox(geom);
+  if (!hasAnnotations(annotation)) {
+    const fit = computeFit(bbox, s.size, s.margin);
+    return scene(fit, s, circularItems(geom, fit, s));
+  }
+  const options = { ...annotation, color: s.stroke, strokeWidth: s.strokeWidth };
+
+  if (geom.startDeg !== undefined) {
+    const path = geom.points;
+    // The inside of the open path A-O-B is the sector, whichever way its angle goes.
+    const orientation = (fit) => {
+      const outline = [...path, ...arcSamples(center, geom.radius, geom.startDeg, geom.endDeg).reverse()].map(fit.map);
+      return signedArea(outline) >= 0 ? 1 : -1;
+    };
+    const { fit, ann } = fitWithPad(bbox, s.size, s.margin, (fit) =>
+      annotate2D(path, false, fit.map, { ...options, names: ['A', 'O', 'B'], orientation: orientation(fit) }),
+    );
+    return scene(fit, s, [...circularItems(geom, fit, s), ...ann.items]);
+  }
+
+  const showRadius = options.lengths && options.lengths !== 'none';
+  const edge = [center, [center[0] + geom.radius, center[1]]];
+  const { fit, ann } = fitWithPad(bbox, s.size, s.margin, (fit) => {
+    const dims = showRadius
+      ? [{ p: edge[0], q: edge[1], side: [0, 1], text: formatNumber(geom.radius, options.decimals ?? 1) + (options.unit ?? '') }]
+      : [];
+    const names = options.vertexNames ? [{ p: center, dir: [-0.6, -0.8], text: 'O' }] : [];
+    return annotateSegments(dims, names, fit.map, showRadius ? [edge.map(fit.map)] : [], options);
+  });
+  const marks = [];
+  if (showRadius || options.vertexNames) {
+    const c = fit.map(center);
+    marks.push({ type: 'path', d: centerDot(c, s.strokeWidth), stroke: 'none', strokeWidth: 0, fill: s.stroke });
+  }
+  if (showRadius) marks.push({ type: 'line', points: edge.map(fit.map), stroke: s.stroke, strokeWidth: s.strokeWidth });
+  return scene(fit, s, [...circularItems(geom, fit, s), ...marks, ...ann.items]);
+}
+
+function centerDot([x, y], strokeWidth) {
+  const r = Math.max(2, strokeWidth * 1.2).toFixed(2);
+  return `M${(x - r).toFixed(2)},${y.toFixed(2)} a${r},${r} 0 1 0 ${2 * r},0 a${r},${r} 0 1 0 ${-2 * r},0 Z`;
+}
+
+// ---------- nets ----------
+
+/**
+ * Scene for a net (nets.js). `options.foldLines` 'solid' | 'dashed' draws the
+ * folds (edges shared by two faces); `dimensions` ({ show, lengths, unit,
+ * decimals, fontSize }) labels each length once (dims of the net).
+ */
+export function buildSceneNet(net, style = {}, options = {}, dimensions = null) {
+  const s = { ...DEFAULT_STYLE, ...style };
+  const foldDashed = options.foldLines === 'dashed';
+  let bbox = null;
+  const grow = (b) => (bbox = bbox ? unionBBox(bbox, b) : b);
+  for (const face of net.faces) grow(bboxOfPoints(face));
+  for (const c of net.circles) grow(circularBBox(c));
+  for (const sec of net.sectors) grow(circularBBox(sec));
+
+  const figure = (fit) => {
+    const items = [];
+    for (const face of net.faces) items.push(...fillItem(s, face.map(fit.map)));
+    for (const line of net.lines) {
+      items.push({ type: 'line', points: [fit.map(line.p), fit.map(line.q)], ...strokeStyle(s, line.fold && foldDashed) });
+    }
+    for (const shape of [...net.circles, ...net.sectors]) items.push(...circularItems(shape, fit, s));
+    return items;
+  };
+
+  if (!(dimensions && dimensions.show)) {
+    const fit = computeFit(bbox, s.size, s.margin);
+    return scene(fit, s, figure(fit));
+  }
+  const o = { lengths: 'label', unit: '', decimals: 1, fontSize: 18, ...dimensions, color: s.stroke, strokeWidth: s.strokeWidth };
+  const text = (v) => formatNumber(v, o.decimals) + o.unit;
+  const { fit, ann } = fitWithPad(bbox, s.size, s.margin, (fit) => {
+    const obstacles = net.lines.map((l) => [fit.map(l.p), fit.map(l.q)]);
+    for (const shape of [...net.circles, ...net.sectors]) {
+      const pts = (shape.startDeg === undefined
+        ? arcSamples(shape.center, shape.radius, 0, 360)
+        : [shape.center, ...arcSamples(shape.center, shape.radius, shape.startDeg, shape.endDeg), shape.center]
+      ).map(fit.map);
+      for (let i = 0; i + 1 < pts.length; i++) obstacles.push([pts[i], pts[i + 1]]);
+    }
+    const extra = [];
+    for (const d of net.dims) if (d.radiusLine) obstacles.push([fit.map(d.p), fit.map(d.q)]);
+    const points = [];
+    if (net.angle) {
+      // Central angle: a small arc at the apex and its value just beyond it.
+      const a = net.angle;
+      const r = Math.min(o.fontSize * 1.6, 0.3 * a.radius * fit.scale) / fit.scale;
+      const arc = { center: a.center, radius: r, startDeg: a.startDeg, endDeg: a.endDeg };
+      const pts = arcSamples(arc.center, r, arc.startDeg, arc.endDeg).map(fit.map);
+      const d = `M${fmtPt(pts[0])} A${(r * fit.scale).toFixed(2)},${(r * fit.scale).toFixed(2)} 0 ${a.endDeg - a.startDeg > 180 ? 1 : 0} 0 ${fmtPt(pts.at(-1))}`;
+      extra.push({ type: 'path', d, fill: 'none', stroke: o.color, strokeWidth: Math.max(0.75, o.strokeWidth * 0.6) });
+      for (let i = 0; i + 1 < pts.length; i++) obstacles.push([pts[i], pts[i + 1]]);
+      const mid = ((a.startDeg + a.endDeg) / 2) * (Math.PI / 180);
+      const dir = [Math.cos(mid), Math.sin(mid)];
+      points.push({ p: [a.center[0] + dir[0] * r, a.center[1] + dir[1] * r], dir, text: `${formatNumber(a.value, o.decimals)}°` });
+    }
+    const dims = net.dims.map((d) => ({ ...d, text: text(d.value) }));
+    const ann = annotateSegments(dims, points, fit.map, obstacles, o);
+    return { items: [...extra, ...ann.items], bounds: ann.bounds };
+  });
+  const radiusLines = net.dims
+    .filter((d) => d.radiusLine)
+    .flatMap((d) => [
+      { type: 'path', d: centerDot(fit.map(d.p), s.strokeWidth), stroke: 'none', strokeWidth: 0, fill: s.stroke },
+      { type: 'line', points: [fit.map(d.p), fit.map(d.q)], stroke: s.stroke, strokeWidth: s.strokeWidth },
+    ]);
+  return scene(fit, s, [...figure(fit), ...radiusLines, ...ann.items]);
 }
 
 const SHAPE_FACTORIES = {
