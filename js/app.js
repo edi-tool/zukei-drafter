@@ -274,6 +274,23 @@ function toast(message, isError = false) {
   }, 2500);
 }
 
+
+/** 押したボタンの中で結果を示し、1.5 秒で元に戻す（DESIGN.md「4. 部品」押した結果） */
+function flashDone(btn, label, spoken = label) {
+  if (btn.dataset.label === undefined) btn.dataset.label = btn.innerHTML;
+  btn.innerHTML = '<span class="et-i et-i-check" aria-hidden="true"></span>' + label;
+  btn.classList.add('is-done');
+  let live = document.getElementById('et-live');
+  if (!live) { live = document.createElement('p'); live.id = 'et-live'; live.className = 'et-live'; live.setAttribute('role', 'status'); document.body.append(live); }
+  live.textContent = spoken;
+  clearTimeout(Number(btn.dataset.timer));
+  btn.dataset.timer = String(setTimeout(() => {
+    btn.innerHTML = btn.dataset.label ?? '';
+    delete btn.dataset.label;
+    btn.classList.remove('is-done');
+  }, 1500));
+}
+
 // ---------- URL state ----------
 
 function collectState() {
@@ -838,7 +855,7 @@ function wireEvents() {
         background: $('png-background').value,
       });
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      toast(`PNG（${size.width} × ${size.height} px）をコピーしました`);
+      flashDone($('btn-copy-png'), 'コピーしました', `PNG（${size.width} × ${size.height} px）をコピーしました`);
     } catch (err) {
       console.info(err);
       toast('このブラウザではクリップボードへのコピーができません。「PNGを保存」を使ってください。', true);
@@ -850,7 +867,7 @@ function wireEvents() {
     writeUrlStateNow();
     try {
       await navigator.clipboard.writeText(location.href);
-      toast('この図のリンクをコピーしました');
+      flashDone($('btn-copy-link'), 'コピーしました', 'この図のリンクをコピーしました');
     } catch {
       toast('リンクをコピーできませんでした。アドレスバーのURLをそのまま使えます。', true);
     }

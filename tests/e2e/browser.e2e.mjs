@@ -443,7 +443,7 @@ try {
   await check('UI: copy PNG to the clipboard', async () => {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
     await page.click('#btn-copy-png');
-    await page.waitForFunction(() => /PNG.*コピーしました/.test(document.querySelector('#toast').textContent));
+    await page.waitForFunction(() => /PNG.*コピーしました/.test(document.querySelector('#et-live')?.textContent ?? '') && /コピーしました/.test(document.querySelector('#btn-copy-png').textContent));
     const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((item) => item.types));
     assert.ok(types.includes('image/png'), `clipboard types: ${types}`);
   });
